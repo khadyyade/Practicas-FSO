@@ -1,0 +1,7 @@
+Soc el procés fill! PID: 19517 i la meva longitud es : 1
+Soc el procés fill! PID: 19518 i la meva longitud es : 1
+Soc el procés pare i he perdut! PID: 19504
+Soc el procés fill i he perdut! PID: 19518
+Soc el procés fill! PID: 19565 i la meva longitud es : 1
+Soc el procés pare i he perdut! PID: 19517
+Soc el procés fill i he perdut! PID: 19565
