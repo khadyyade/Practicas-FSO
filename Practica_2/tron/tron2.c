@@ -1,10 +1,11 @@
 /*****************************************************************************/
 /*									     */
-/*				     tron1.c				     */
+/*				     tron2.c				     */
 /*									     */
 /*	   $ gcc -c winsuport.c -o winsuport.o			     	     */
-/*	   $ gcc tron1.c winsuport.o -o tron1 -lcurses			     */
-/*	   $ $ ./tron1 num_oponents variabilitat fitxer [retard_min retard_max]				     */
+/*	   $ gcc -c semafor.c -o semafor.o			     	     */
+/*	   $ gcc tron2.c winsuport.o semafor.o -o tron2 -lcurses			     */
+/*	   $ $ ./tron2 num_oponents variabilitat fitxer [retard_min retard_max]				     */
 /*									     */
 /*  Codis de retorn:						  	     */
 /*     El programa retorna algun dels seguents codis al SO:		     */
@@ -19,8 +20,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/wait.h>
-#include <sys/wait.h>
 #include "winsuport.h"		/* incloure definicions de funcions propies */
+// #include "memoria.h"
+#include "semafor.h"
 
 /* Paso 1.8: variable global pel fitxer de sortida */
 FILE *arxiuSortida = NULL;
@@ -44,6 +46,11 @@ typedef struct {		/* per una entrada de la taula de posicio */
 int RET_MIN = 50;     /* valor mínim del retard */
 int RET_MAX = 500;    /* valor màxim del retard */
 
+/* Variables per semàfors */
+int sem_screen;  /* Semàfor per pantalla */
+int sem_file;    /* Semàfor per fitxer */
+int sem_sync;    /* Semàfor per sincronització */
+
 /* variables globals */
 int n_fil, n_col;		/* dimensions del camp de joc */
 
@@ -56,7 +63,6 @@ int dc[] = {0, -1, 0, 1};	/* dalt, esquerra, baix, dreta */
 
 int varia;		/* valor de variabilitat dels oponents [0..9] */
 int retard;		/* valor del retard de moviment, en mil.lisegons */
-int retard_min, retard_max;	/*rang minim-maxim del retard de moviment d'un oponent*/
 
 pos *p_usu;			/* taula de posicions que van recorrent */
 pos *p_opo;			/* els jugadors */
@@ -83,7 +89,6 @@ void esborrar_posicions(pos p_pos[], int n_pos)
 }
 
 /* funcio per inicialitar les variables i visualitzar l'estat inicial del joc */
-void inicialitza_joc(void)
 void inicialitza_joc(void)
 {
   char strin[45];
@@ -132,7 +137,14 @@ void mou_oponent(int index)
   {
     seg.f = opo[index].f + df[opo[index].d];	/* Paso 1.5: usa índex per accedir a l'oponent */
     seg.c = opo[index].c + dc[opo[index].d];
+
+    /******************/
+    /* SECCIO CRITICA */
+    /******************/
+    waitS(sem_screen);
     cars = win_quincar(seg.f,seg.c);
+    signalS(sem_screen);
+
     if (cars != ' ')
        canvi = 1;
     else if (varia > 0)
@@ -148,7 +160,14 @@ void mou_oponent(int index)
           if (vk < 0) vk += 4;
           seg.f = opo[index].f + df[vk];
           seg.c = opo[index].c + dc[vk];
+
+          /******************/
+          /* SECCIO CRITICA */
+          /******************/
+          waitS(sem_screen);
           cars = win_quincar(seg.f,seg.c);
+          signalS(sem_screen);
+
           if (cars == ' ')
           { vd[nd] = vk;			/* memoritza com a direccio possible */
             nd++;				/* anota una direccio possible mes */
@@ -156,8 +175,13 @@ void mou_oponent(int index)
       }
       if (nd == 0) {			/* si no pot continuar, */
           fi2 = 1;		/* Paso 1.2: actualitza variable global */
+          /******************/
+          /* SECCIO CRITICA */
+          /******************/
+          waitS(sem_file);
           fprintf(arxiuSortida, "L'oponent %d (PID: %d) ha xocat\n", 
                   index, getpid());
+          signalS(sem_file);
       }
       else
       { if (nd == 1)
@@ -170,14 +194,26 @@ void mou_oponent(int index)
     {
       opo[index].f = opo[index].f + df[opo[index].d];	/* Paso 1.5: usa índex */
       opo[index].c = opo[index].c + dc[opo[index].d];
+
+      /******************/
+      /* SECCIO CRITICA */
+      /******************/
+      waitS(sem_screen);
       win_escricar(opo[index].f,opo[index].c,'1'+index,INVERS);
+      signalS(sem_screen);
+
       p_opo[n_opo].f = opo[index].f;
       p_opo[n_opo].c = opo[index].c;
       n_opo++;
-      /* Paso 1.8: registra moviment al fitxer */
+
+      /******************/
+      /* SECCIO CRITICA */
+      /******************/
+      waitS(sem_file);
       if (arxiuSortida)
         fprintf(arxiuSortida, "L'oponent %d (PID: %d) s'ha mogut a (%d,%d)\n",
                 index, getpid(), opo[index].f, opo[index].c);
+      signalS(sem_file);
     }
     else esborrar_posicions(p_opo, n_opo);
 
@@ -192,7 +228,6 @@ void mou_oponent(int index)
  * i pot modificar-les sense problemes de sincronització */
 void mou_usuari(void)
 {
-
   char cars;
   tron seg;
   int tecla;
@@ -212,7 +247,12 @@ void mou_usuari(void)
     
     seg.f = usu.f + df[usu.d];	/* calcular seguent posicio */
     seg.c = usu.c + dc[usu.d];
-    cars = win_quincar(seg.f,seg.c);	/* calcular caracter seguent posicio */
+
+    /******************/
+    /* SECCIO CRITICA */
+    /******************/
+    waitS(sem_screen);
+    cars = win_quincar(seg.f,seg.c);
     if (cars == ' ')			/* si seguent posicio lliure */
     {
       usu.f = seg.f; usu.c = seg.c;		/* actualitza posicio */
@@ -221,12 +261,18 @@ void mou_usuari(void)
       p_usu[n_usu].c = usu.c;
       n_usu++;
     }
-    else
-    { 
+    signalS(sem_screen);
+
+    if (cars != ' ') {
       esborrar_posicions(p_usu, n_usu);
       fi1 = 1; /* Paso 1.3: actualitza variable global */
+      /******************/
+      /* SECCIO CRITICA */
+      /******************/
+      waitS(sem_file);
       fprintf(arxiuSortida, "L'usuari (PID: %d) ha xocat a: (%d,%d)\n",
               getpid(), seg.f, seg.c);
+      signalS(sem_file);
     }
     win_retard(retard); /* Paso 1.3: afegeix retardo en el bucle */
   }
@@ -243,7 +289,7 @@ int main(int n_args, const char *ll_args[])
   /* Verificar arguments */
   if ((n_args != 4) && (n_args != 6))
   {
-    fprintf(stderr,"Comanda: ./tron1 num_oponents variabilitat fitxer [retard_min retard_max]\n");
+    fprintf(stderr,"Comanda: ./tron2 num_oponents variabilitat fitxer [retard_min retard_max]\n");
     fprintf(stderr,"         on num_oponents indica el nombre d'oponents (1-9)\n");
     fprintf(stderr,"         variabilitat indica la frequencia de canvi de direccio\n");
     fprintf(stderr,"         de l'oponent: de 0 a 3 (0- gens variable, 3- molt variable),\n");
@@ -316,6 +362,11 @@ int main(int n_args, const char *ll_args[])
 			/* Fins aqui tot ha anat be! */
   inicialitza_joc();
 
+  /* Crear els semàfors individuals */
+  sem_screen = ini_sem(1); /* Semàfor per accés a pantalla */
+  sem_file = ini_sem(1);   /* Semàfor per accés a fitxer */ 
+  sem_sync = ini_sem(1);   /* Semàfor per sincronització */
+
   /* Creació dels processos fills (un per cada oponent)
    * Cada fill executarà la funció mou_oponent() de forma concurrent */
   for (i = 0; i < num_oponents; i++) {
@@ -347,6 +398,11 @@ int main(int n_args, const char *ll_args[])
   win_fi();				/* tanca les curses */
   free(p_usu);
   free(p_opo);	  	 /* allibera la memoria dinamica obtinguda */
+
+  /* Abans d'acabar, eliminar semàfors */
+  elim_sem(sem_screen);
+  elim_sem(sem_file);
+  elim_sem(sem_sync);
 
   if (fi1 == -1) {
     printf("S'ha aturat el joc amb tecla RETURN!\n\n");

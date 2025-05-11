@@ -1,0 +1,304 @@
+1. Exemple bàsic de fork
+La crida fork() crea un nou procés fll que és una còpia del procés pare. El fll comença a executar-
+se des del punt on es va cridar a fork(). Aquí tens un exemple senzill:
+#include <stdio.h>
+#include <unistd.h>
+int main() {
+pid_t pid = fork();
+if (pid == 0) {
+// Codi executat pel fill
+printf("Soc el procés fill! PID: %d\n", getpid());
+} else if (pid > 0) {
+// Codi executat pel pare
+printf("Soc el procés pare! PID: %d, Fill PID: %d\n", getpid(), pid);
+} else {
+// Error en el fork
+perror("fork");
+return 1;
+}
+return 0;
+}
+En aquest exemple, el procés pare crea un procés fll amb fork(). El pare i el fll executen codi
+diferent depenent del valor retornat per fork().
+2. Exemple bàsic de exec
+La família de funcions exec() substitueix la imatge del procés actual amb una nova imatge d'un
+programa. Aquí tens un exemple amb execlp() en el que el programa que carreguem és el de la
+comanda ls amb l'opció -l:
+#include <stdio.h>
+#include <unistd.h>
+int main() {
+pid_t pid = fork();
+if (pid == 0) {
+// Codi executat pel fill
+printf("Soc el procés fill! PID: %d\n", getpid());
+execlp("/bin/ls", "ls", "-l", NULL);
+// Substituïm la imatge del fill per 'ls -l'
+perror("execlp"); // Això s'executa només si hi ha un error en execlp
+return 1;
+} else if (pid > 0) { // Codi executat pel pare
+printf("Soc el procés pare! PID: %d, Fill PID: %d\n", getpid(), pid);
+} else { // Error en el fork
+perror("fork");
+return 1;
+}
+return 0;
+}
+En aquest exemple, el procés fll executa la comanda ls -l mitjançant execlp(). Si execlp() té
+èxit, el codi posterior no s'executa.
+3. Afegint la taula de canals oberts
+Cada procés té una taula de canals oberts (fle descriptors) que gestiona els recursos oberts, com ara
+ftxers, pipes, sockets, etc. Quan es fa un fork(), el fll hereta una còpia de la taula de canals oberts
+del pare. Això signifca que tant el pare com el fll poden accedir als mateixos recursos oberts.
+Aquí tens un exemple que mostra com es comporta la taula de canals oberts després d'un fork():
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+int main() {
+pid_t pid;
+int fd = open("example.txt", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+if (fd == -1) {
+perror("open");
+return 1;
+}
+printf("Soc el procés pare! He creat el fitxer, ara faré un fork\n");
+write(fd, "Soc el pare abans del fork \n", 28);
+pid = fork();
+if (pid == 0) {
+// Codi executat pel fill
+printf("Soc el procés fill! PID: %d\n", getpid());
+write(fd, "Fill escriu això\n", 18);
+close(fd); // El fill tanca el fitxer
+} else if (pid > 0) {
+// Codi executat pel pare
+printf("Soc el procés pare! PID: %d, Fill PID: %d\n", getpid(), pid);
+write(fd, "Pare escriu això\n", 18);
+close(fd); // El pare tanca el fitxer
+} else {
+// Error en el fork
+perror("fork");
+return 1;
+}
+return 0;
+}
+En aquest exemple:
+• S'obre un ftxer anomenat example.txt.
+• Es fa un fork(), i tant el pare com el fll tenen accés al mateix fle descriptor fd.
+• Tant el pare com el fll escriuen en el ftxer.
+• Finalment, tant el pare com el fll tanquen el ftxer.
+4. Execució de exec amb canals oberts
+Quan es fa un exec(), la taula de canals oberts es manté, llevat que es tanquin explícitament abans
+de cridar a exec(). Aquí tens un exemple:
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+int main() {
+pid_t pid;
+int fd = open("example.txt", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+if (fd == -1) {
+perror("open");
+return 1;
+}
+printf("Soc el procés pare! He creat el fitxer, ara faré un fork\n");
+write(fd, "Soc el pare abans del fork \n", 28);
+pid = fork();
+if (pid == 0) {
+// Codi executat pel fill
+printf("Soc el procés fill! PID: %d\n", getpid());
+write(fd, "Fill escriu això\n", 17);
+execlp("/bin/ls", "ls", "-l", NULL); // Substituïm la imatge del fill
+per 'ls -l'
+perror("execlp"); // Això s'executa només si hi ha un error en execlp
+close(fd); // Això no s'executarà si execlp té èxit
+return 1;
+} else if (pid > 0) {
+// Codi executat pel pare
+printf("Soc el procés pare! PID: %d, Fill PID: %d\n", getpid(), pid);
+write(fd, "Pare escriu això\n", 17);
+close(fd); // El pare tanca el fitxer
+} else {
+// Error en el fork
+perror("fork");
+return 1;
+}
+return 0;
+}
+En aquest exemple:
+• El fll escriu en el ftxer abans de cridar a execlp().
+• Després de execlp(), el procés fll substitueix la seva imatge per la comanda ls -l, però el
+fle descriptor fd segueix obert i accessible per a la nova imatge (si fos necessari).
+Resum
+• fork() crea un nou procés fll que hereta una còpia de la taula de canals oberts del pare.
+• exec() substitueix la imatge del procés actual, però manté la taula de canals oberts.
+• Els canals oberts es poden compartir entre pare i fll, i cal tancar-los adequadament per evitar
+fugues de recursos.
+Podem crear un programa en C on el procés pare generi dos flls i utilitzi una pipe per comunicar-los,
+de manera que un fll executi ls -l i l'altre executi wc, connectant la sortida del primer fll (ls -l)
+amb l'entrada del segon fll (wc). Això simula el comportament de la comanda ls -l | wc en un shell.
+Aquí tens un exemple complet:
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <sys/wait.h>
+int main() {
+int pipefd[2]; // Descriptors de la pipe
+pid_t pid1, pid2;
+// Creem la pipe
+if (pipe(pipefd) == -1) {
+perror("pipe");
+exit(EXIT_FAILURE);
+}
+// Creem el primer fill (executarà ls -l)
+pid1 = fork();
+if (pid1 == 0) {
+// Codi del primer fill
+close(pipefd[0]); // Tanquem l'extrem de lectura de la pipe
+dup2(pipefd[1], STDOUT_FILENO);
+// Redirigim la sortida estàndard a la pipe
+close(pipefd[1]);
+// Tanquem l'extrem d'escriptura després de duplicar-lo
+execlp("ls", "ls", "-l", NULL); // Executem ls -l
+perror("execlp ls"); // Si arribem aquí, hi ha hagut un error
+exit(EXIT_FAILURE);
+} else if (pid1 < 0) {
+perror("fork");
+exit(EXIT_FAILURE);
+}
+// Creem el segon fill (executarà wc)
+pid2 = fork();
+if (pid2 == 0) {
+// Codi del segon fill
+close(pipefd[1]); // Tanquem l'extrem d'escriptura de la pipe
+dup2(pipefd[0], STDIN_FILENO);
+// Redirigim l'entrada estàndard a la pipe
+close(pipefd[0]); // Tanquem l'extrem de lectura després de duplicar-lo
+execlp("wc", "wc", NULL); // Executem wc
+perror("execlp wc"); // Si arribem aquí, hi ha hagut un error
+exit(EXIT_FAILURE);
+} else if (pid2 < 0) {
+perror("fork");
+exit(EXIT_FAILURE);
+}
+// El pare tanca els dos extrems de la pipe
+close(pipefd[0]);
+close(pipefd[1]);
+// Esperem que els dos fills acabin
+waitpid(pid1, NULL, 0);
+waitpid(pid2, NULL, 0);
+printf("Els dos fills han acabat.\n");
+return 0;
+}
+Explicació del codi
+• Creació de la pipe:
+• pipe(pipefd) crea una pipe amb dos extrems: pipefd[0] (lectura) i pipefd[1]
+(escriptura).
+• Primer fll (ls -l):
+• El primer fll tanca l'extrem de lectura de la pipe (pipefd[0]), ja que només necessita
+escriure.
+• Utilitza dup2(pipefd[1], STDOUT_FILENO) per redirigir la seva sortida estàndard a la
+pipe.
+• Executa ls -l amb execlp(). La sortida de ls -l es redirigeix a la pipe.
+• Segon fll (wc):
+• El segon fll tanca l'extrem d'escriptura de la pipe (pipefd[1]), ja que només necessita
+llegir.
+• Utilitza dup2(pipefd[0], STDIN_FILENO) per redirigir la seva entrada estàndard a la pipe.
+• Executa wc amb execlp(). L'entrada de wc prové de la pipe.
+• Procés pare:
+• El pare tanca els dos extrems de la pipe, ja que no els necessita.
+• Espera que els dos flls acabin amb waitpid().
+• Execució:
+• El primer fll escriu la sortida de ls -l a la pipe.
+• El segon fll llegeix aquesta sortida des de la pipe i la processa amb wc.
+Resultat esperat
+Quan executeu aquest programa, veureu la sortida de wc (nombre de línies, paraules i bytes) basada
+en la sortida de ls -l. Això és equivalent a executar ls -l | wc en un terminal.
+Exemple de sortida
+Si executeu el programa en un directori amb alguns ftxers, la sortida podria ser alguna cosa com:
+5 40 280
+Els dos fills han acabat.
+Això indica que ls -l va generar 5 línies, 40 paraules i 280 bytes, i el procés pare espera que els dos
+flls acabin.
+Podem reescriure aquest exemple utilitzant dup en lloc de dup2. La diferència principal és que amb
+dup no podem especifcar directament quin fle descriptor volem utilitzar, sinó que hem de tancar
+manualment el fle descriptor que volem reemplaçar i després fer servir dup, que assignarà
+automàticament el descriptor lliure més baix (que serà el que acabem de tancar).
+A continuació tens l'exemple:
+Explicació del codi
+• Creació de la pipe:
+• Es crea una pipe amb pipe(pipefd), que retorna dos file descriptors:
+pipefd[0] (lectura) i pipefd[1] (escriptura).
+• Primer fll (ls -l):
+• Tanca l'extrem de lectura de la pipe (pipefd[0]), ja que només necessita escriure.
+• Tanca la sortida estàndard (stdout, descriptor 1) amb close(1).
+• Duplica l'extrem d'escriptura de la pipe (pipefd[1]) a stdout amb
+dup(pipefd[1]). Com que el descriptor 1 està tancat, dup assignarà
+automàticament el descriptor 1.
+• Tanca l'extrem d'escriptura de la pipe (pipefd[1]), ja que ja està duplicat.
+• Executa ls -l amb execlp. La sortida de ls -l es redirigeix a la pipe.
+• Segon fll (wc):
+• Tanca l'extrem d'escriptura de la pipe (pipefd[1]), ja que només necessita llegir.
+• Tanca l'entrada estàndard (stdin, descriptor 0) amb close(0).
+• Duplica l'extrem de lectura de la pipe (pipefd[0]) a stdin amb
+dup(pipefd[0]). Com que el descriptor 0 està tancat, dup assignarà
+automàticament el descriptor 0.
+• Tanca l'extrem de lectura de la pipe (pipefd[0]), ja que ja està duplicat.
+• Executa wc amb execlp. L'entrada de wc prové de la pipe.
+• Procés pare:
+• Tanca els dos extrems de la pipe, ja que no els necessita.
+• Espera que els dos fills acabin amb waitpid.
+Diferències amb dup2
+• Amb dup2, no cal tancar manualment el file descriptor de destí abans de duplicar-lo, ja que
+dup2 ho fa automàticament.
+• Amb dup, hem de tancar manualment el file descriptor de destí (per exemple, close(1)
+per a stdout) abans de fer servir dup.
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+int main() {
+int pipefd[2]; // Descriptors de la pipe
+pid_t pid1, pid2;
+// Crear la pipe
+if (pipe(pipefd)) {
+perror("pipe");
+exit(EXIT_FAILURE);
+}
+// Crear el primer fill (executarà ls -l)
+pid1 = fork();
+if (pid1 == 0) { // Codi del primer fill
+close(pipefd[0]); // Tancar l'extrem de lectura de la pipe
+// Redirigir el stdout a l'extrem d'escriptura de la pipe
+close(1); // Tancar stdout
+dup(pipefd[1]);
+// Duplicar l'extrem d'escriptura de la pipe a stdout (descriptor 1)
+close(pipefd[1]);
+// Tancar l'extrem d'escriptura de la pipe (ja està duplicat)
+// Executar ls -l
+execlp("ls", "ls", "-l", NULL);
+perror("execlp ls"); // Si execlp falla
+exit(EXIT_FAILURE);
+}
+// Crear el segon fill (executarà wc)
+pid2 = fork();
+if (pid2 == 0) { // Codi del segon fill
+close(pipefd[1]); // Tancar l'extrem d'escriptura de la pipe
+// Redirigir el (stdin) a l'extrem de lectura de la pipe
+close(0); // Tancar stdin
+dup(pipefd[0]);
+// Duplicar l'extrem de lectura de la pipe a stdin (descriptor 0)
+close(pipefd[0]);
+// Tancar l'extrem de lectura de la pipe (ja està duplicat)
+// Executar wc
+execlp("wc", "wc", NULL);
+perror("execlp wc"); // Si execlp falla
+exit(EXIT_FAILURE);
+}
+// Procés pare: tancar els dos extrems de la pipe
+close(pipefd[0]);
+close(pipefd[1]);
+// Esperar que els dos fills acabin
+waitpid(pid1, NULL, 0);
+waitpid(pid2, NULL, 0);
+printf("Els dos fills han acabat.\n");
+return 0;
+}
