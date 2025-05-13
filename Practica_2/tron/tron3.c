@@ -1,40 +1,36 @@
 /*****************************************************************************/
 /*									     */
-/*				     tron2.c				     */
+/*				     tron3.c				     */
 /*									     */
-/*	   $ gcc -c winsuport.c -o winsuport.o			     	     */
-/*	   $ gcc -c semafor.c -o semafor.o			     	     */
-/*	   $ gcc -c memoria.c -o memoria.o			     	     */
-/*	   $ gcc tron2.c winsuport.o semafor.o memoria.o -o tron2 -lcurses			     */
-/*	   $ $ ./tron2 num_oponents variabilitat fitxer [retard_min retard_max]				     */
-/*									     */
-/*  Codis de retorn:						  	     */
-/*     El programa retorna algun dels seguents codis al SO:		     */
-/*	0  ==>  funcionament normal					     */
-/*	1  ==>  numero d'arguments incorrecte 				     */
-/*	2  ==>  no s'ha pogut crear el camp de joc (no pot iniciar CURSES)   */
-/*	3  ==>  no hi ha prou memoria per crear les estructures dinamiques   */
+/*	   $ gcc -c winsuport2.c -o winsuport2.o			     	     */
+/*	   $ gcc tron3.c winsuport2.o memoria.o semafor.o -o tron3 -lcurses -lpthread			 */
+/*     $ gcc oponent3.c winsuport2.o memoria.o semafor.o -o oponent3 -lcurses                */
+/*	   $ $ ./tron3 num_oponents variabilitat fitxer [retard_min retard_max]				     */
 /*									     */
 /*****************************************************************************/
+
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <string.h>
-#include "winsuport.h"
+#include "winsuport2.h"
 #include "memoria.h"
 #include "semafor.h"
 #include <time.h>
 
 /* Funciones per la taula compartida */
+// (Fase3) Hay que definirlas tambien en oponent3
 char win_quincar_compartit(int f, int c);
 void win_escricar_compartit(int f, int c, char car);
 
-/* Paso 1.8: variable global pel fitxer de sortida */
+/* Variable global pel fitxer de sortida */
+// (Fase3) Hay que pasar el puntero a oponent3
 FILE *arxiuSortida = NULL;
 
 /* Variables per memoria compartida */
+// (Fase3) Hay que pasar todos los punteros a oponent3
 int id_fi1, id_fi2;         /* IDs zona memoria compartida pels flags fi1/fi2 */
 int *p_fi1, *p_fi2;         /* Punters a les zones de memoria compartida */
 int id_pantalla;            /* ID zona memoria compartida per la pantalla */
@@ -42,8 +38,8 @@ void *p_pantalla;           /* Punter memoria compartida pantalla */
 int id_vius;               /* ID zona memoria compartida pel contador d'oponents vius */
 int *p_vius;               /* Punter a la zona de memoria compartida pel contador */
 
-				/* definir estructures d'informacio */
-typedef struct {		/* per un tron (usuari o oponent) */
+/* definir estructures d'informacio per usari*/
+typedef struct {		/* per un tron (usuari) */
 	int f;				/* posicio actual: fila */
 	int c;				/* posicio actual: columna */
 	int d;				/* direccio actual: [0..3] */
@@ -54,41 +50,62 @@ typedef struct {		/* per una entrada de la taula de posicio */
 	int c;
 } pos;
 
-/* Paso 1.5: definició del límit màxim d'oponents */
+/* Constant limit només en tron3 */
 #define MAX_OPONENTS 9
 
-/* Paso 1.7: definició de constants pel retard aleatori */
+// (Fase3) Tot i que s'utilitzen en els oponents les controla el programa principal 
+// Poden ser modificades per paràmetre al executar tron3
+// Les pasarem com paràmetres a oponent3 (ja que no canvien)
+
 int RET_MIN = 50;     /* valor mínim del retard */
 int RET_MAX = 500;    /* valor màxim del retard */
 
 /* Variables per semàfors */
+// (Fase3) Es defineixen a tron3 però també es pasaran a oponent3 
+// perque hem de fer servir els mateixos semàfors per usuari y oponent
 int semPantalla;  /* Semàfor per pantalla */
 int semArxiu;    /* Semàfor per fitxer */
 int semFinal;    /* Semàfor per sincronització */
 
-/* variables globals */
+// (Fase3) Definits a tron3 però s'utilitzen a oponent3 (no canvien)
+// Les pasem com a paràmetre
 int n_fil, n_col;		/* dimensions del camp de joc */
 
+// (Fase3) Només en tron3
 tron usu;   	   		/* informacio de l'usuari */
+
+// (Fase3) Es crea a tron3 i es passa a oponent3
+// Cada oponente accede al suyo
+
 tron opo[MAX_OPONENTS];		/* Paso 1.5: array de tots els oponents */
+
+// (Fase3) Només en tron3
+
 int n_opo_actius = 0;        /* Paso 1.5: numero d'oponents actius */
 
+// (Fase3) En tron3 i en oponent3
 int df[] = {-1, 0, 1, 0};	/* moviments de les 4 direccions possibles */
 int dc[] = {0, -1, 0, 1};	/* dalt, esquerra, baix, dreta */
 
+// (Fase 3) Les rebem per paràmetre en tron3
 int varia;		/* valor de variabilitat dels oponents [0..9] */
 int retard;		/* valor del retard de moviment, en mil.lisegons */
 
+// (Fase3) Per l'usuari només la necesitem a tron3 
+
 pos *p_usu;			/* taula de posicions que va recorrent l'usuari */
-pos **p_opo;			/* vector de taules de posicions dels oponents */
 int n_usu = 0;         /* numero d'entrades en la taula de pos. de l'usuari */
+
+// (Fase3) Per l'oponent les necesitem per inicialitzar i oponent3 editar
+
+pos **p_opo;			/* vector de taules de posicions dels oponents */
 int *n_opo;            /* vector del numero d'entrades per cada oponent */
 
-/* Paso 1.6: afegir variable global pel nombre d'oponents */
+// (Fase 3) Només a tron3
 int num_oponents = 1;      /* per defecte, un oponent */
 
-/* funcio per esborrar totes les posicions anteriors, sigui de l'usuari o */
-/* de l'oponent */
+// (Fase 3) A tron3 i oponent3 es necessaria
+/* funcio per esborrar totes les posicions anteriors de l'usuari */
 void esborrar_posicions(pos p_pos[], int n_pos)
 {
   int i;
@@ -101,6 +118,7 @@ void esborrar_posicions(pos p_pos[], int n_pos)
 }
 
 /* funcio per inicialitar les variables i visualitzar l'estat inicial del joc */
+// (Fase3) Només l'utilitzem a tron3
 void inicialitza_joc(void)
 {
   char strin[45];
@@ -134,122 +152,11 @@ void inicialitza_joc(void)
   win_escristr(strin);
 }
 
-/* Funció pel moviment dels oponents, executada com a procés independent.
- * Cada procés fill té la seva pròpia còpia de les variables globals,
- * cosa que pot causar problemes de sincronització */
-void mou_oponent(int index)
-{
-  char cars;
-  tron seg;
-  int k, vk, nd, vd[3];
-  int canvi = 0;
-  int ret_aleatori;     /* Paso 1.7: variable pel retard aleatori */
- 
-  srand(getpid() + time(NULL) + index); /* Diferent llavor per cada procés */
+// (Fase3) La funció mou_oponent ara només es troba a oponent3.c
 
-  while (!(*p_fi1) && !(*p_fi2)) /* Paso 1.2: bucle propi */
-  {
-    seg.f = opo[index].f + df[opo[index].d];	/* Paso 1.5: usa índex per accedir a l'oponent */
-    seg.c = opo[index].c + dc[opo[index].d];
+/////////////////////////////////
 
-    /******************/
-    /* SECCIO CRITICA */
-    /******************/
-    waitS(semPantalla);
-    cars = win_quincar_compartit(seg.f,seg.c); /* Usar la versión compartida */
-    signalS(semPantalla);
-
-    if (cars != ' ')
-       canvi = 1;
-    else if (varia > 0)
-    { k = rand() % 10;
-      if (k < varia) canvi = 1;
-    }
-    
-    if (canvi){
-      nd = 0;
-      for (k=-1; k<=1	; k++)	/* provar direccio actual i dir. veines */
-      {
-          vk = (opo[index].d + k)%4;		/* Paso 1.5: usa índex */
-          if (vk < 0) vk += 4;
-          seg.f = opo[index].f + df[vk];
-          seg.c = opo[index].c + dc[vk];
-
-          /******************/
-          /* SECCIO CRITICA */
-          /******************/
-          waitS(semPantalla);
-          cars = win_quincar_compartit(seg.f,seg.c); /* Usar la versión compartida */
-          signalS(semPantalla);
-
-          if (cars == ' ')
-          { vd[nd] = vk;			/* memoritza com a direccio possible */
-            nd++;				/* anota una direccio possible mes */
-          }
-      }
-      if (nd == 0) {			/* si no pot continuar, */
-          
-          /******************/
-          /* SECCIO CRITICA */
-          /******************/
-          esborrar_posicions(p_opo[index], n_opo[index]);  /* esborrar aquest oponent */
-
-          waitS(semFinal);
-          (*p_vius)--;   /* Decrementem el comptador d'oponents vius */
-          if (*p_vius <= 0) {  /* Si no queden oponents vius */
-              *p_fi2 = 1;
-          }
-          signalS(semFinal);
-
-          /******************/
-          /* SECCIO CRITICA */
-          /******************/
-          waitS(semArxiu);
-          fprintf(arxiuSortida, "L'oponent %d (PID: %d) ha xocat. Queden %d oponents vius\n", 
-                  index, getpid(), *p_vius);
-          signalS(semArxiu);
-          
-          break;  /* Sortim del bucle per acabar aquest oponent */
-      }
-      else
-      { if (nd == 1)
-          opo[index].d = vd[0];		/* Paso 1.5: usa índex */
-        else
-          opo[index].d = vd[rand() % nd];
-      }
-    }
-    if (!(*p_fi2))		/* Paso 1.2: verifica si pot continuar */
-    {
-      opo[index].f = opo[index].f + df[opo[index].d];	/* Paso 1.5: usa índex */
-      opo[index].c = opo[index].c + dc[opo[index].d];
-
-      /******************/
-      /* SECCIO CRITICA */
-      /******************/
-      waitS(semPantalla);
-      win_escricar_compartit(opo[index].f,opo[index].c,'1'+index);
-      signalS(semPantalla);
-
-      p_opo[index][n_opo[index]].f = opo[index].f;
-      p_opo[index][n_opo[index]].c = opo[index].c;
-      n_opo[index]++;
-
-      /******************/
-      /* SECCIO CRITICA */
-      /******************/
-      waitS(semArxiu);
-      if (arxiuSortida)
-        fprintf(arxiuSortida, "L'oponent %d (PID: %d) s'ha mogut a (%d,%d)\n",
-                index, getpid(), opo[index].f, opo[index].c);
-      signalS(semArxiu);
-    }
-    else esborrar_posicions(p_opo[index], n_opo[index]);
-
-    /* Paso 1.7: càlcul i aplicació del retard aleatori */
-    ret_aleatori = RET_MIN + rand() % (RET_MAX - RET_MIN + 1);
-    win_retard(ret_aleatori);
-  }
-}
+// (Fase3) La funció mou_usuari ara només es troba a tron3.c
 
 /* Funció pel moviment de l'usuari, executada pel procés pare.
  * Al ser el procés principal, té accés directe a les variables globals
@@ -316,7 +223,7 @@ void mou_usuari(void)
   }
 }
 
-/* Funciones para trabajar con el tablero compartido */
+// (Fase3) Aquesta funció la necesitem als dos costats
 char win_quincar_compartit(int f, int c)
 {
   char caracter = win_quincar(f,c); // Primer llegim el valor que hauria d'estar escrit en la pantalla
@@ -328,6 +235,7 @@ char win_quincar_compartit(int f, int c)
   return caracter; // Si el valor de terminal es diferent de un espai segur que no s'equivoca
 }
 
+// (Fase3) Aquesta funció la necesitem als dos costats
 void win_escricar_compartit(int f, int c, char car)
 {
   if (f >= 0 && f < n_fil && c >= 0 && c < n_col) { 
@@ -344,6 +252,9 @@ void win_escricar_compartit(int f, int c, char car)
 /* programa principal */
 int main(int n_args, const char *ll_args[])
 {
+  
+  // (Fase3) Aquesta part del main es igual
+
   int retwin;
   int i, id_proc[MAX_OPONENTS];
   
@@ -422,25 +333,11 @@ int main(int n_args, const char *ll_args[])
   memset(p_pantalla, ' ', n_fil * n_col);
 
   p_usu = calloc(n_fil*n_col/2, sizeof(pos));	/* demana memoria dinamica */
-  
-  /* Reservar memoria per les posicions dels oponents */
-  p_opo = calloc(num_oponents, sizeof(pos*));     /* vector de punters */
-  n_opo = calloc(num_oponents, sizeof(int));      /* vector de contadors */
-  for(i = 0; i < num_oponents; i++) {
-    p_opo[i] = calloc(n_fil*n_col/2, sizeof(pos)); /* espai per cada oponent */
-    n_opo[i] = 0;                                  /* inicialitzar contador */
-  }
-
-  if (!p_usu || !p_opo || !n_opo)	/* si no hi ha prou memoria */
-  { 
-    win_fi();
+  p_opo = calloc(n_fil*n_col/2, sizeof(pos));	/* per a les posicions ant. */
+  if (!p_usu || !p_opo)	/* si no hi ha prou memoria per als vectors de pos. */
+  { win_fi();				/* tanca les curses */
     if (p_usu) free(p_usu);
-    if (p_opo) {
-      for(i = 0; i < num_oponents; i++) 
-        if(p_opo[i]) free(p_opo[i]);
-      free(p_opo);
-    }
-    if (n_opo) free(n_opo);
+    if (p_opo) free(p_opo);	   /* allibera el que hagi pogut obtenir */
     fprintf(stderr,"Error en alocatacion de memoria dinamica.\n");
     exit(3);
   }
@@ -466,6 +363,35 @@ int main(int n_args, const char *ll_args[])
   semPantalla = ini_sem(1);
   semArxiu = ini_sem(1);
   semFinal = ini_sem(1);
+
+  // (Fase3) Fins aquí tot igual
+  //////////////////////////////
+
+  // (Fase3) Al crear els fills ara no hem de cridar a la funció, sino a execlp enviant totes les dades necesaries
+  /*
+  Param 0 : *arxiuSortida
+  Param 1 : id_fi1
+  Param 2 : id_fi2
+  Param 3 : *p_fi1
+  Param 4 : *p_fi2
+  Param 5 : id_pantalla
+  Param 6 : *p_pantalla
+  Param 7 : id_vius
+  Param 8 : *p_vius
+  Param 9 : RET_MIN
+  Param 10 : RET_MAX
+  Param 11 : semPantalla
+  Param 12 : semArxiu
+  Param 13 : semFinal
+  Param 14 : n_fil
+  Param 15 : n_col
+  Param 16 : varia
+  Param 17 : retard
+  Param 18 : **p_opo
+  Param 19 : *n_opo
+  Param 20 : i (numero d'oponent)
+  Param 
+  */
 
   /* Creació dels processos fills (un per cada oponent)
    * Cada fill executarà la funció mou_oponent() de forma concurrent */
@@ -496,12 +422,13 @@ int main(int n_args, const char *ll_args[])
     waitpid(id_proc[i], NULL, 0);
   }
 
+  /////////////////////////
+
+  // (Fase3) A partir d'aquí en teoría tampoc s'ha de modificar res mes
+
   win_fi();				/* tanca les curses */
   free(p_usu);
-  for(i = 0; i < num_oponents; i++)
-    free(p_opo[i]);
-  free(p_opo);
-  free(n_opo);	  	 /* allibera la memoria dinamica obtinguda */
+  free(p_opo);	  	 /* allibera la memoria dinamica obtinguda */
 
   /* Alliberar recursos */
   elim_mem(id_fi1);
