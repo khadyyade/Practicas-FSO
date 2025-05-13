@@ -28,6 +28,9 @@
 // (Fase3) Hay que pasar el puntero a oponent3
 FILE *arxiuSortida = NULL;
 
+/* Variable global para el nombre del archivo */
+const char *nomArxiu;   // Añadir esta variable global
+
 /* Variables per memoria compartida */
 // (Fase3) Hay que pasar todos los punteros a oponent3
 int id_fi1, id_fi2;         /* IDs zona memoria compartida pels flags fi1/fi2 */
@@ -153,79 +156,48 @@ void inicialitza_joc(void)
 
 /////////////////////////////////
 
-// (Fase3) La funció mou_usuari ara només es troba a tron3.c
-
-/* Funció pel moviment de l'usuari, executada pel procés pare.
- * Al ser el procés principal, té accés directe a les variables globals
- * i pot modificar-les sense problemes de sincronització */
+/* Funció pel moviment de l'usuari */
 void mou_usuari(void)
 {
   char cars;
   tron seg;
   int tecla;
   
-  while (!(*p_fi1) && !(*p_fi2)) /* Paso 1.3: bucle propi */
+  tecla = win_gettec();
+  if (tecla != 0)
+  switch (tecla)	/* modificar direccio usuari segons tecla */
   {
-    tecla = win_gettec();
-    if (tecla != 0)
-    switch (tecla)	/* modificar direccio usuari segons tecla */
-    {
-      case TEC_AMUNT:	usu.d = 0; break;
-      case TEC_ESQUER:	usu.d = 1; break;
-      case TEC_AVALL:	usu.d = 2; break;
-      case TEC_DRETA:	usu.d = 3; break;
-      case TEC_RETURN:	*p_fi1 = -1; /* Quitar semáforo */
-                        break;
-    }
-    
-    seg.f = usu.f + df[usu.d];	/* calcular seguent posicio */
-    seg.c = usu.c + dc[usu.d];
+    case TEC_AMUNT:	usu.d = 0; break;
+    case TEC_ESQUER:	usu.d = 1; break;
+    case TEC_AVALL:	usu.d = 2; break;
+    case TEC_DRETA:	usu.d = 3; break;
+    case TEC_RETURN:	*p_fi1 = -1;
+                      break;
+  }
+  
+  seg.f = usu.f + df[usu.d];	/* calcular seguent posicio */
+  seg.c = usu.c + dc[usu.d];
 
-    cars = win_quincar(seg.f,seg.c); /* win_quincar ja està sincronitzat */
-    if (cars == ' ')			/* si seguent posicio lliure */
-    {
-      usu.f = seg.f; usu.c = seg.c;		/* actualitza posicio */
-      win_escricar(usu.f,usu.c,'0',INVERS);	/* dibuixa bloc usuari */
-      p_usu[n_usu].f = usu.f;		/* memoritza posicio actual */
-      p_usu[n_usu].c = usu.c;
-      n_usu++;
-    }
+  cars = win_quincar(seg.f,seg.c);
+  if (cars == ' ')			/* si seguent posicio lliure */
+  {
+    usu.f = seg.f; usu.c = seg.c;		/* actualitza posicio */
+    win_escricar(usu.f,usu.c,'0',INVERS);	/* dibuixa bloc usuari */
+    p_usu[n_usu].f = usu.f;		/* memoritza posicio actual */
+    p_usu[n_usu].c = usu.c;
+    n_usu++;
+  }
 
-    if (cars != ' ') {
-      esborrar_posicions(p_usu, n_usu);
-      *p_fi1 = 1; /* Quitar semáforo */
-      fprintf(arxiuSortida, "L'usuari (PID: %d) ha xocat a: (%d,%d)\n",
-              getpid(), seg.f, seg.c);
-    }
-    win_retard(retard); /* Paso 1.3: afegeix retardo en el bucle */
+  if (cars != ' ') {
+    esborrar_posicions(p_usu, n_usu);
+    *p_fi1 = 1;
+    arxiuSortida = fopen(nomArxiu, "a");  // Usar la variable global
+    fprintf(arxiuSortida, "L'usuari (PID: %d) ha xocat a: (%d,%d)\n",
+            getpid(), seg.f, seg.c);
+    fflush(arxiuSortida);  // Forzar escritura
+    fclose(arxiuSortida);  // Cerrar inmediatamente
   }
 }
-
-// (Fase3) Aquesta funció la necesitem als dos costats
-/* char win_quincar(int f, int c)
-{
-  char caracter = win_quincar(f,c); // Primer llegim el valor que hauria d'estar escrit en la pantalla
-  if (caracter == ' '){ // Si la posicio està buida no estem 100 % segurs de que la pantalla hagi retornat el resutat correcte
-    if (f >= 0 && f < n_fil && c >= 0 && c < n_col) { // Si la posicio està dins dels limits del tablero
-      return ((char *)p_pantalla)[f * n_col + c]; // Llegim el valor real de la pantalla que s'ha guardat desde memòria compartida
-    }
-  }
-  return caracter; // Si el valor de terminal es diferent de un espai segur que no s'equivoca
-} */
-
-// (Fase3) Aquesta funció la necesitem als dos costats
-/* void win_escricar(int f, int c, char car)
-{
-  if (f >= 0 && f < n_fil && c >= 0 && c < n_col) { 
-    ((char *)p_pantalla)[f * n_col + c] = car; // Escribim en memòria compartida
-    // Si vamos a escribir un espacio (solo pasará al borrar el rastro de un oponente muerto cuando aun quedan mas)
-    if (car == ' ') {
-      win_escricar(f, c, car, NO_INV);  // Espais sense atribut INVERS (color del fons)
-    } else {
-      win_escricar(f, c, car, INVERS);  // Resta de caracters amb INVERS (color del fons)
-    }
-  }
-} */
 
 /* programa principal */
 int main(int n_args, const char *ll_args[])
@@ -273,15 +245,20 @@ int main(int n_args, const char *ll_args[])
     retard = RET_MIN;  /* usar el retardo mínimo para el usuario */
   }
 
+  /* Guardar nombre del archivo en variable global */
+  nomArxiu = ll_args[3];
+
   /* Abrir archivo de salida */
-  arxiuSortida = fopen(ll_args[3], "w");
+  arxiuSortida = fopen(nomArxiu, "w");
   if (!arxiuSortida) {
-    fprintf(stderr,"Error: no s'ha pogut obrir el fitxer %s\n", ll_args[3]);
+    fprintf(stderr,"Error: no s'ha pogut obrir el fitxer %s\n", nomArxiu);
     exit(5);
   }
-  setbuf(arxiuSortida, NULL);
+  setbuf(arxiuSortida, NULL);  // Deshabilitar el buffer
   fprintf(arxiuSortida, ">>> INICI DEL JOC (PID pare: %d) - %d oponents <<<\n", 
           getpid(), num_oponents);
+  fflush(arxiuSortida);  // Forzar escritura inmediata
+  fclose(arxiuSortida);  // Cerrar archivo para que los hijos lo puedan abrir
 
   printf("Joc del Tron\n\tTecles: \'%c\', \'%c\', \'%c\', \'%c\', RETURN-> sortir\n",
 		TEC_AMUNT, TEC_AVALL, TEC_DRETA, TEC_ESQUER);
@@ -395,17 +372,17 @@ int main(int n_args, const char *ll_args[])
     }
   }
 
-  mou_usuari();
-
   /* Bucle principal del joc */
+  char strin[45];
   do {
-    
-    win_update();
-    win_retard(20);
+    mou_usuari();  // Moure l'usuari una posició
+    sprintf(strin,"Vius: %d", *p_vius);  // Mostrar info en última línia
+    win_escristr(strin);
+    win_update();  // Actualitzar pantalla
+    win_retard(retard);  // Usar el retard configurat
   } while (!(*p_fi1) && !(*p_fi2));
 
-  /* Espera a que tots els fills acabin abans de finalitzar
-   * Això assegura que no quedin processos zombie */
+  /* Espera a que tots els fills acabin abans de finalitzar */
   for (i = 0; i < num_oponents; i++) {
     waitpid(id_proc[i], NULL, 0);
   }
@@ -429,23 +406,19 @@ int main(int n_args, const char *ll_args[])
   elim_sem(semArxiu);
   elim_sem(semFinal); */
 
+  arxiuSortida = fopen(nomArxiu, "a");  // Reabrir para mensaje final
   if (*p_fi1 == -1) {
-    printf("S'ha aturat el joc amb tecla RETURN!\n\n");
     fprintf(arxiuSortida, "Joc aturat manualment per l'usuari (PID: %d)\n", getpid());
-  }
-  else { 
+  } else { 
     if (*p_fi2) {
-      printf("Ha guanyat l'usuari!\n\n");
       fprintf(arxiuSortida, "Fi del joc: ha guanyat l'usuari (PID: %d) - L'oponent ha quedat atrapat\n", getpid());
-    }
-    else {
-      printf("Ha guanyat l'ordinador!\n\n");
+    } else {
       fprintf(arxiuSortida, "Fi del joc: ha guanyat l'ordinador (PID: %d) - L'usuari ha xocat\n", getpid());
     }
   }
-
   fprintf(arxiuSortida, ">>> FINAL DEL JOC <<<\n");
-  if (arxiuSortida) fclose(arxiuSortida);
+  fflush(arxiuSortida);
+  fclose(arxiuSortida);
 
   return(0);
 }

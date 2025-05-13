@@ -136,8 +136,9 @@ int main(int n_args, char *ll_args[])
   }
 
   /* Obrir arxiu */
-  arxiuSortida = fopen(ll_args[1], "a");
+  arxiuSortida = fopen(ll_args[1], "a");  // Abrir en modo append
   if (!arxiuSortida) exit(2);
+  setbuf(arxiuSortida, NULL);  // Deshabilitar el buffer
 
   /* Recuperar IDs de memoria compartida */
   id_fi1 = atoi(ll_args[2]);
@@ -231,6 +232,7 @@ int main(int n_args, char *ll_args[])
 
           fprintf(arxiuSortida, "L'oponent %d (PID: %d) ha xocat. Queden %d oponents vius\n", 
                   index, getpid(), *p_vius);
+          fflush(arxiuSortida);  // Forzar escritura
           
           break;  /* Sortim del bucle per acabar aquest oponent */
       }
@@ -255,6 +257,7 @@ int main(int n_args, char *ll_args[])
       if (arxiuSortida)
         fprintf(arxiuSortida, "L'oponent %d (PID: %d) s'ha mogut a (%d,%d)\n",
                 index, getpid(), opo[index].f, opo[index].c);
+        fflush(arxiuSortida);  // Forzar escritura
     }
     else esborrar_posicions(p_opo[0], n_opo[index]);  // Usar [0] en lugar de [index]
 
