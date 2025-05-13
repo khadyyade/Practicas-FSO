@@ -113,7 +113,8 @@ void esborrar_posicions(pos p_pos[], int n_pos)
   for (i=n_pos-1; i>=0; i--)		/* de l'ultima cap a la primera */
   {
     win_escricar(p_pos[i].f,p_pos[i].c,' ',NO_INV);	/* esborra una pos. */
-    win_retard(10);		/* un petit retard per simular el joc real */
+    win_retard(6);
+    win_update();  // Actualizar después de cada borrado
   }
 }
 
@@ -379,7 +380,7 @@ int main(int n_args, const char *ll_args[])
     sprintf(strin,"Vius: %d", *p_vius);  // Mostrar info en última línia
     win_escristr(strin);
     win_update();  // Actualitzar pantalla
-    win_retard(retard);  // Usar el retard configurat
+    win_retard(75);  // Ajustar el retard del usuario a 75ms
   } while (!(*p_fi1) && !(*p_fi2));
 
   /* Espera a que tots els fills acabin abans de finalitzar */
@@ -387,26 +388,34 @@ int main(int n_args, const char *ll_args[])
     waitpid(id_proc[i], NULL, 0);
   }
 
-  /////////////////////////
+  win_fi();  // Cerrar ventana antes de mostrar el mensaje
 
-  // (Fase3) A partir d'aquí en teoría tampoc s'ha de modificar res mes
+  /* Mostrar mensaje final en la terminal */
+  if (*p_fi1 == -1) {
+    printf("\nS'ha aturat el joc amb tecla RETURN!\n\n");
+  } else { 
+    if (*p_fi2) {
+      printf("\nHa guanyat l'usuari!\n\n");
+    } else {
+      printf("\nHa guanyat l'ordinador!\n\n");
+    }
+  }
 
-  win_fi();				/* tanca les curses */
+  /* Liberar recursos */
   free(p_usu);
-  free(p_opo);	  	 /* allibera la memoria dinamica obtinguda */
+  for(i = 0; i < num_oponents; i++) {
+    if(p_opo[i]) free(p_opo[i]);
+  }
+  free(p_opo);
+  free(n_opo);
 
-  /* Alliberar recursos */
   elim_mem(id_fi1);
   elim_mem(id_fi2);
-  elim_mem(id_vius);    /* Alliberem la memoria del comptador */
-  elim_mem(id_pantalla); /* Liberar la memoria del tablero */
+  elim_mem(id_vius);
+  elim_mem(id_pantalla);
 
-  /* Eliminar liberación de semáforos */
-  /* elim_sem(semPantalla);
-  elim_sem(semArxiu);
-  elim_sem(semFinal); */
-
-  arxiuSortida = fopen(nomArxiu, "a");  // Reabrir para mensaje final
+  /* Escribir mensaje final en archivo */
+  arxiuSortida = fopen(nomArxiu, "a");
   if (*p_fi1 == -1) {
     fprintf(arxiuSortida, "Joc aturat manualment per l'usuari (PID: %d)\n", getpid());
   } else { 

@@ -90,7 +90,8 @@ void esborrar_posicions(pos p_pos[], int n_pos)
   for (i=n_pos-1; i>=0; i--)		/* de l'ultima cap a la primera */
   {
     win_escricar(p_pos[i].f,p_pos[i].c,' ',NO_INV);	/* esborra una pos. */
-    win_retard(10);		/* un petit retard per simular el joc real */
+    win_retard(6);
+    win_update();  // Actualizar después de cada borrado
   }
 }
 
