@@ -5,7 +5,7 @@
 /*	   $ gcc -c winsuport2.c -o winsuport2.o			     	     */
 /*	   $ gcc tron3.c winsuport2.o memoria.o semafor.o -o tron3 -lcurses -lpthread			 */
 /*     $ gcc oponent3.c winsuport2.o memoria.o semafor.o -o oponent3 -lcurses                */
-/*	   $ $ ./tron3 num_oponents variabilitat fitxer [retard_min retard_max]				     */
+/*	   $ ./tron3 num_oponents variabilitat fitxer [retard_min retard_max]				     */
 /*									     */
 /*****************************************************************************/
 
@@ -19,10 +19,12 @@
 #include "semafor.h"
 #include <time.h>
 
+#define MAX_OPONENTS 9
+
 /* Funciones per la taula compartida */
 // (Fase3) Hay que definirlas tambien en oponent3
-char win_quincar_compartit(int f, int c);
-void win_escricar_compartit(int f, int c, char car);
+/* char win_quincar(int f, int c);
+void win_escricar(int f, int c, char car); */
 
 /* Variable global pel fitxer de sortida */
 // (Fase3) Rebem el punter de tron3
@@ -61,13 +63,6 @@ tron opo[MAX_OPONENTS];
 int RET_MIN;     /* valor mínim del retard */
 int RET_MAX;    /* valor màxim del retard */
 
-/* Variables per semàfors */
-// (Fase3) Es defineixen a tron3 però les rebem per paràmetre
-// perque hem de fer servir els mateixos semàfors per usuari y oponent
-int semPantalla;  /* Semàfor per pantalla */
-int semArxiu;    /* Semàfor per fitxer */
-int semFinal;    /* Semàfor per sincronització */
-
 // (Fase3) Definits a tron3 però les utilitzem a oponent3 (no canvien)
 // Les rebem com a paràmetre
 int n_fil, n_col;		/* dimensions del camp de joc */
@@ -94,13 +89,13 @@ void esborrar_posicions(pos p_pos[], int n_pos)
   
   for (i=n_pos-1; i>=0; i--)		/* de l'ultima cap a la primera */
   {
-    win_escricar_compartit(p_pos[i].f,p_pos[i].c,' ');	/* esborra una pos. */
+    win_escricar(p_pos[i].f,p_pos[i].c,' ',NO_INV);	/* esborra una pos. */
     win_retard(10);		/* un petit retard per simular el joc real */
   }
 }
 
 // (Fase3) Aquesta funció la necesitem als dos costats
-char win_quincar_compartit(int f, int c)
+/* char win_quincar(int f, int c)
 {
   char caracter = win_quincar(f,c); // Primer llegim el valor que hauria d'estar escrit en la pantalla
   if (caracter == ' '){ // Si la posicio està buida no estem 100 % segurs de que la pantalla hagi retornat el resutat correcte
@@ -109,21 +104,21 @@ char win_quincar_compartit(int f, int c)
     }
   }
   return caracter; // Si el valor de terminal es diferent de un espai segur que no s'equivoca
-}
+} */
 
 // (Fase3) Aquesta funció la necesitem als dos costats
-void win_escricar_compartit(int f, int c, char car)
+/* void win_escricar(int f, int c, char car)
 {
   if (f >= 0 && f < n_fil && c >= 0 && c < n_col) { 
     ((char *)p_pantalla)[f * n_col + c] = car; // Escribim en memòria compartida
-    /* Si vamos a escribir un espacio (solo pasará al borrar el rastro de un oponente muerto cuando aun quedan mas)*/
+    // Si vamos a escribir un espacio (solo pasará al borrar el rastro de un oponente muerto cuando aun quedan mas)
     if (car == ' ') {
       win_escricar(f, c, car, NO_INV);  // Espais sense atribut INVERS (color del fons)
     } else {
       win_escricar(f, c, car, INVERS);  // Resta de caracters amb INVERS (color del fons)
     }
   }
-}
+} */
 
 // (Fase3) No fa falta la funció d'inicialitza_joc
 
@@ -131,13 +126,62 @@ void win_escricar_compartit(int f, int c, char car)
 
 /////////////////////////////////
 
-// (Fase3) La funció mou_oponent ara només es troba a oponent3.c
+// (Fase3) La funció mou_oponent ara s'executa al main d'oponent3.c
 
-/* Funció pel moviment dels oponents, executada com a procés independent.
- * Cada procés fill té la seva pròpia còpia de les variables globals,
- * cosa que pot causar problemes de sincronització */
-void mou_oponent(int index)
+int main(int n_args, char *ll_args[])
 {
+  if (n_args != 16) {
+    fprintf(stderr,"Error: numero de parametres incorrecte.\n");
+    exit(1);
+  }
+
+  /* Obrir arxiu */
+  arxiuSortida = fopen(ll_args[1], "a");
+  if (!arxiuSortida) exit(2);
+
+  /* Recuperar IDs de memoria compartida */
+  id_fi1 = atoi(ll_args[2]);
+  id_fi2 = atoi(ll_args[3]);
+  id_pantalla = atoi(ll_args[4]);
+  id_vius = atoi(ll_args[5]);
+
+  /* Mapear la memoria compartida */
+  p_fi1 = (int *)map_mem(id_fi1);
+  p_fi2 = (int *)map_mem(id_fi2);
+  p_pantalla = map_mem(id_pantalla);
+  p_vius = (int *)map_mem(id_vius);
+
+  /* Recuperar dimensiones y variables */
+  n_fil = atoi(ll_args[8]);
+  n_col = atoi(ll_args[9]);
+
+  /* Inicializar acceso a la ventana compartida */
+  win_set(p_pantalla, n_fil, n_col);
+
+  /* Otras variables */
+  RET_MIN = atoi(ll_args[6]);
+  RET_MAX = atoi(ll_args[7]);
+  varia = atoi(ll_args[10]);
+  retard = atoi(ll_args[11]);
+  int index = atoi(ll_args[12]);
+
+  /* Posición inicial del oponente */
+  opo[index].f = atoi(ll_args[13]);
+  opo[index].c = atoi(ll_args[14]);
+  opo[index].d = atoi(ll_args[15]);
+
+  /* Reservar memoria para el rastro - CORREGIR */
+  p_opo = calloc(MAX_OPONENTS, sizeof(pos *));  // Cambiamos 1 por MAX_OPONENTS
+  n_opo = calloc(MAX_OPONENTS, sizeof(int));    // Cambiamos 1 por MAX_OPONENTS
+  p_opo[0] = calloc(n_fil*n_col/2, sizeof(pos));
+  n_opo[index] = 0;  // Inicializamos el contador del oponente actual
+
+  if (!p_opo || !n_opo || !p_opo[0]) {
+    fprintf(stderr,"Error: no s'ha pogut reservar memoria.\n");
+    exit(3);
+  }
+
+  /* Ejecutar movimiento del oponente */
   char cars;
   tron seg;
   int k, vk, nd, vd[3];
@@ -151,12 +195,7 @@ void mou_oponent(int index)
     seg.f = opo[index].f + df[opo[index].d];	/* Paso 1.5: usa índex per accedir a l'oponent */
     seg.c = opo[index].c + dc[opo[index].d];
 
-    /******************/
-    /* SECCIO CRITICA */
-    /******************/
-    waitS(semPantalla);
-    cars = win_quincar_compartit(seg.f,seg.c); /* Usar la versión compartida */
-    signalS(semPantalla);
+    cars = win_quincar(seg.f,seg.c);  /* win_quincar ya está sincronizado */
 
     if (cars != ' ')
        canvi = 1;
@@ -174,12 +213,7 @@ void mou_oponent(int index)
           seg.f = opo[index].f + df[vk];
           seg.c = opo[index].c + dc[vk];
 
-          /******************/
-          /* SECCIO CRITICA */
-          /******************/
-          waitS(semPantalla);
-          cars = win_quincar_compartit(seg.f,seg.c); /* Usar la versión compartida */
-          signalS(semPantalla);
+          cars = win_quincar(seg.f,seg.c); /* win_quincar ya está sincronizado */
 
           if (cars == ' ')
           { vd[nd] = vk;			/* memoritza com a direccio possible */
@@ -188,25 +222,15 @@ void mou_oponent(int index)
       }
       if (nd == 0) {			/* si no pot continuar, */
           
-          /******************/
-          /* SECCIO CRITICA */
-          /******************/
-          esborrar_posicions(p_opo[index], n_opo[index]);  /* esborrar aquest oponent */
+          esborrar_posicions(p_opo[0], n_opo[index]);  /* esborrar aquest oponent */
 
-          waitS(semFinal);
           (*p_vius)--;   /* Decrementem el comptador d'oponents vius */
           if (*p_vius <= 0) {  /* Si no queden oponents vius */
               *p_fi2 = 1;
           }
-          signalS(semFinal);
 
-          /******************/
-          /* SECCIO CRITICA */
-          /******************/
-          waitS(semArxiu);
           fprintf(arxiuSortida, "L'oponent %d (PID: %d) ha xocat. Queden %d oponents vius\n", 
                   index, getpid(), *p_vius);
-          signalS(semArxiu);
           
           break;  /* Sortim del bucle per acabar aquest oponent */
       }
@@ -222,43 +246,28 @@ void mou_oponent(int index)
       opo[index].f = opo[index].f + df[opo[index].d];	/* Paso 1.5: usa índex */
       opo[index].c = opo[index].c + dc[opo[index].d];
 
-      /******************/
-      /* SECCIO CRITICA */
-      /******************/
-      waitS(semPantalla);
-      win_escricar_compartit(opo[index].f,opo[index].c,'1'+index);
-      signalS(semPantalla);
+      win_escricar(opo[index].f,opo[index].c,'1'+index,INVERS);  /* win_escricar ya está sincronizado */
 
-      p_opo[index][n_opo[index]].f = opo[index].f;
-      p_opo[index][n_opo[index]].c = opo[index].c;
+      p_opo[0][n_opo[index]].f = opo[index].f;  // Usar [0] en lugar de [index]
+      p_opo[0][n_opo[index]].c = opo[index].c;
       n_opo[index]++;
 
-      /******************/
-      /* SECCIO CRITICA */
-      /******************/
-      waitS(semArxiu);
       if (arxiuSortida)
         fprintf(arxiuSortida, "L'oponent %d (PID: %d) s'ha mogut a (%d,%d)\n",
                 index, getpid(), opo[index].f, opo[index].c);
-      signalS(semArxiu);
     }
-    else esborrar_posicions(p_opo[index], n_opo[index]);
+    else esborrar_posicions(p_opo[0], n_opo[index]);  // Usar [0] en lugar de [index]
 
     /* Paso 1.7: càlcul i aplicació del retard aleatori */
     ret_aleatori = RET_MIN + rand() % (RET_MAX - RET_MIN + 1);
     win_retard(ret_aleatori);
   }
-}
 
+  /* Liberar recursos */
+  free(p_opo[0]);
+  free(p_opo);
+  free(n_opo);
+  fclose(arxiuSortida);
 
-
-// (Fase3) En aquest main només rebem les dades de tron3 i controlem als oponents
-int main(int n_args, const char *ll_args[])
-{
-
-// Rebre per paràmetre valors, processar-los i guardar-los en les variables que toca
-
-// Llavors cridem a mou oponent amb el index que toca
-
-
+  return 0;
 }
