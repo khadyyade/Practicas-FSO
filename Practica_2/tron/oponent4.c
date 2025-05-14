@@ -1,11 +1,11 @@
 /*****************************************************************************/
 /*									     */
-/*				     oponent3.c				     */
+/*				     oponent4.c				     */
 /*									     */
 /*	   $ gcc -c winsuport2.c -o winsuport2.o			     	     */
-/*	   $ gcc tron3.c winsuport2.o memoria.o semafor.o -o tron3 -lcurses -lpthread			 */
-/*     $ gcc oponent3.c winsuport2.o memoria.o semafor.o -o oponent3 -lcurses                */
-/*	   $ ./tron3 num_oponents variabilitat fitxer [retard_min retard_max]				     */
+/*	   $ gcc tron4.c winsuport2.o memoria.o -o tron4 -lcurses -lpthread			 */
+/*     $ gcc oponent4.c winsuport2.o memoria.o -o oponent4 -lcurses                */
+/*	   $ ./tron4 num_oponents variabilitat fitxer [retard_min retard_max]				     */
 /*									     */
 /*****************************************************************************/
 
@@ -16,7 +16,6 @@
 #include <string.h>
 #include "winsuport2.h"
 #include "memoria.h"
-#include "semafor.h"
 #include <time.h>
 
 #define MAX_OPONENTS 9
@@ -80,6 +79,9 @@ int retard;		/* valor del retard de moviment, en mil.lisegons */
 pos **p_opo;			/* vector de taules de posicions dels oponents */
 int *n_opo;            /* vector del numero d'entrades per cada oponent */
 
+/* Variables para la posición inicial */
+int pos_ini_f;
+int pos_ini_c;
 
 // (Fase 3) A tron3 i oponent3 es necessaria
 /* funcio per esborrar totes les posicions anteriors de l'oponent */
@@ -90,7 +92,7 @@ void esborrar_posicions(pos p_pos[], int n_pos)
   for (i=n_pos-1; i>=0; i--)		/* de l'ultima cap a la primera */
   {
     win_escricar(p_pos[i].f,p_pos[i].c,' ',NO_INV);	/* esborra una pos. */
-    win_retard(6);
+    win_retard(10);
     win_update();  // Actualizar después de cada borrado
   }
 }
@@ -131,7 +133,7 @@ void esborrar_posicions(pos p_pos[], int n_pos)
 
 int main(int n_args, char *ll_args[])
 {
-  if (n_args != 16) {
+  if (n_args != 18) {  // Actualizamos el número de parámetros esperados
     fprintf(stderr,"Error: numero de parametres incorrecte.\n");
     exit(1);
   }
@@ -171,6 +173,10 @@ int main(int n_args, char *ll_args[])
   opo[index].f = atoi(ll_args[13]);
   opo[index].c = atoi(ll_args[14]);
   opo[index].d = atoi(ll_args[15]);
+
+  /* Guardar posición inicial */
+  pos_ini_f = atoi(ll_args[16]);
+  pos_ini_c = atoi(ll_args[17]);
 
   /* Reservar memoria para el rastro */
   p_opo = calloc(MAX_OPONENTS, sizeof(pos *));
@@ -225,6 +231,8 @@ int main(int n_args, char *ll_args[])
       if (nd == 0) {			/* si no pot continuar, */
           
           esborrar_posicions(p_opo[0], n_opo[index]);  /* esborrar aquest oponent */
+          win_escricar(pos_ini_f, pos_ini_c, ' ', NO_INV); /* borrar posición inicial */
+          win_update();
 
           (*p_vius)--;   /* Decrementem el comptador d'oponents vius */
           if (*p_vius <= 0) {  /* Si no queden oponents vius */

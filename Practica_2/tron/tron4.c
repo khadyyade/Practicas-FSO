@@ -1,11 +1,11 @@
 /*****************************************************************************/
 /*									     */
-/*				     tron3.c				     */
+/*				     tron4.c				     */
 /*									     */
 /*	   $ gcc -c winsuport2.c -o winsuport2.o			     	     */
-/*	   $ gcc tron3.c winsuport2.o memoria.o -o tron3 -lcurses -lpthread			 */
-/*     $ gcc oponent3.c winsuport2.o memoria.o -o oponent3 -lcurses                */
-/*	   $ ./tron3 num_oponents variabilitat fitxer [retard_min retard_max]				     */
+/*	   $ gcc tron4.c winsuport2.o memoria.o -o tron4 -lcurses -lpthread			 */
+/*     $ gcc oponent4.c winsuport2.o memoria.o -o oponent4 -lcurses                */
+/*	   $ ./tron4 num_oponents variabilitat fitxer [retard_min retard_max]				     */
 /*									     */
 /*****************************************************************************/
 
@@ -17,22 +17,20 @@
 #include <string.h>
 #include "winsuport2.h"
 #include "memoria.h"
+#include <pthread.h>
 #include <time.h>
 
-/* Funciones per la taula compartida */
-// (Fase3) Hay que definirlas tambien en oponent3
-// char win_quincar(int f, int c);
-// void win_escricar(int f, int c, char car);
 
 /* Variable global pel fitxer de sortida */
-// (Fase3) Hay que pasar el nombre del archivo a oponent3
 FILE *arxiuSortida = NULL;
 
 /* Variable global para el nombre del archivo */
 const char *nomArxiu;   // Añadir esta variable global
 
+/* Variable global para el thread del usuario */
+pthread_t threadUsuari;
+
 /* Variables per memoria compartida */
-// (Fase3) Hay que pasar todos los punteros a oponent3
 int id_fi1, id_fi2;         /* IDs zona memoria compartida pels flags fi1/fi2 */
 int *p_fi1, *p_fi2;         /* Punters a les zones de memoria compartida */
 int id_pantalla;            /* ID zona memoria compartida per la pantalla */
@@ -52,59 +50,33 @@ typedef struct {		/* per una entrada de la taula de posicio */
 	int c;
 } pos;
 
-/* Constant limit només en tron3 */
 #define MAX_OPONENTS 9
-
-// (Fase3) Tot i que s'utilitzen en els oponents les controla el programa principal 
-// Poden ser modificades per paràmetre al executar tron3
-// Les pasarem com paràmetres a oponent3 (ja que no canvien)
 
 int RET_MIN = 50;     /* valor mínim del retard */
 int RET_MAX = 500;    /* valor màxim del retard */
 
-/* Variables per semàfors - ELIMINAR */
-/* int semPantalla;
-int semArxiu; 
-int semFinal; */
-
-// (Fase3) Definits a tron3 però s'utilitzen a oponent3 (no canvien)
-// Les pasem com a paràmetre
 int n_fil, n_col;		/* dimensions del camp de joc */
 
-// (Fase3) Només en tron3
 tron usu;   	   		/* informacio de l'usuari */
 
-// (Fase3) Es crea a tron3 i es passa a oponent3
-// Cada oponente accede al suyo
+tron opo[MAX_OPONENTS];
 
-tron opo[MAX_OPONENTS];		/* Paso 1.5: array de tots els oponents */
+int n_opo_actius = 0;
 
-// (Fase3) Només en tron3
-
-int n_opo_actius = 0;        /* Paso 1.5: numero d'oponents actius */
-
-// (Fase3) En tron3 i en oponent3
 int df[] = {-1, 0, 1, 0};	/* moviments de les 4 direccions possibles */
 int dc[] = {0, -1, 0, 1};	/* dalt, esquerra, baix, dreta */
 
-// (Fase 3) Les rebem per paràmetre en tron3
 int varia;		/* valor de variabilitat dels oponents [0..9] */
 int retard;		/* valor del retard de moviment, en mil.lisegons */
-
-// (Fase3) Per l'usuari només la necesitem a tron3 
 
 pos *p_usu;			/* taula de posicions que va recorrent l'usuari */
 int n_usu = 0;         /* numero d'entrades en la taula de pos. de l'usuari */
 
-// (Fase3) Per l'oponent les necesitem per inicialitzar i oponent3 editar
-
 pos **p_opo;			/* vector de taules de posicions dels oponents */
 int *n_opo;            /* vector del numero d'entrades per cada oponent */
 
-// (Fase 3) Només a tron3
 int num_oponents = 1;      /* per defecte, un oponent */
 
-// (Fase 3) A tron3 i oponent3 es necessaria
 /* funcio per esborrar totes les posicions anteriors de l'usuari */
 void esborrar_posicions(pos p_pos[], int n_pos)
 {
@@ -114,12 +86,11 @@ void esborrar_posicions(pos p_pos[], int n_pos)
   {
     win_escricar(p_pos[i].f,p_pos[i].c,' ',NO_INV);	/* esborra una pos. */
     win_retard(6);
-    win_update();  // Actualitzar la terminal (pantala)
+    win_update();  // Actualitzar la terminal (pantalla)
   }
 }
 
 /* funcio per inicialitar les variables i visualitzar l'estat inicial del joc */
-// (Fase3) Només l'utilitzem a tron3
 void inicialitza_joc(void)
 {
   char strin[45];
@@ -142,9 +113,11 @@ void inicialitza_joc(void)
     opo[i].c = (n_col*3)/4;                    /* mateixa columna */
     opo[i].d = 1;                              /* direcció inicial: esquerra */
     win_escricar(opo[i].f,opo[i].c,'1'+i,INVERS);
-    p_opo[i][n_opo[i]].f = opo[i].f;
-    p_opo[i][n_opo[i]].c = opo[i].c;
-    n_opo[i]++;
+    
+    /* Guardar también la posición inicial en el rastro */
+    p_opo[i][0].f = opo[i].f;
+    p_opo[i][0].c = opo[i].c;
+    n_opo[i] = 1;  // Empezar desde 1 ya que hemos guardado la posición inicial
   }
   n_opo_actius = num_oponents;    /* actualitza comptador d'oponents */
 
@@ -153,51 +126,52 @@ void inicialitza_joc(void)
   win_escristr(strin);
 }
 
-// (Fase3) La funció mou_oponent ara només es troba a oponent3.c
-
-/////////////////////////////////
-
-/* Funció pel moviment de l'usuari */
-void mou_usuari(void)
+/* Funció pel moviment de l'usuari com thread */
+void *mou_usuari(void *arg)
 {
   char cars;
   tron seg;
   int tecla;
   
-  tecla = win_gettec();
-  if (tecla != 0)
-  switch (tecla)	/* modificar direccio usuari segons tecla */
-  {
-    case TEC_AMUNT:	usu.d = 0; break;
-    case TEC_ESQUER:	usu.d = 1; break;
-    case TEC_AVALL:	usu.d = 2; break;
-    case TEC_DRETA:	usu.d = 3; break;
-    case TEC_RETURN:	*p_fi1 = -1;
-                      break;
-  }
-  
-  seg.f = usu.f + df[usu.d];	/* calcular seguent posicio */
-  seg.c = usu.c + dc[usu.d];
+  while (!(*p_fi1) && !(*p_fi2)) {
+    tecla = win_gettec();
+    if (tecla != 0)
+    switch (tecla)
+    {
+      case TEC_AMUNT:	usu.d = 0; break;
+      case TEC_ESQUER:	usu.d = 1; break;
+      case TEC_AVALL:	usu.d = 2; break;
+      case TEC_DRETA:	usu.d = 3; break;
+      case TEC_RETURN:	*p_fi1 = -1; break;
+    }
+    
+    seg.f = usu.f + df[usu.d];
+    seg.c = usu.c + dc[usu.d];
 
-  cars = win_quincar(seg.f,seg.c);
-  if (cars == ' ')			/* si seguent posicio lliure */
-  {
-    usu.f = seg.f; usu.c = seg.c;		/* actualitza posicio */
-    win_escricar(usu.f,usu.c,'0',INVERS);	/* dibuixa bloc usuari */
-    p_usu[n_usu].f = usu.f;		/* memoritza posicio actual */
-    p_usu[n_usu].c = usu.c;
-    n_usu++;
+    cars = win_quincar(seg.f,seg.c);
+    if (cars == ' ')
+    {
+      usu.f = seg.f; usu.c = seg.c;
+      win_escricar(usu.f,usu.c,'0',INVERS);
+      p_usu[n_usu].f = usu.f;
+      p_usu[n_usu].c = usu.c;
+      n_usu++;
+    }
+
+    if (cars != ' ') {
+      esborrar_posicions(p_usu, n_usu);
+      *p_fi1 = 1;
+      arxiuSortida = fopen(nomArxiu, "a");
+      fprintf(arxiuSortida, "L'usuari (PID: %d) ha xocat a: (%d,%d)\n",
+              getpid(), seg.f, seg.c);
+      fflush(arxiuSortida);
+      fclose(arxiuSortida);
+      break;
+    }
+    win_retard(85);
   }
 
-  if (cars != ' ') {
-    esborrar_posicions(p_usu, n_usu);
-    *p_fi1 = 1;
-    arxiuSortida = fopen(nomArxiu, "a");  // Usar la variable global
-    fprintf(arxiuSortida, "L'usuari (PID: %d) ha xocat a: (%d,%d)\n",
-            getpid(), seg.f, seg.c);
-    fflush(arxiuSortida);  // Forzar escritura
-    fclose(arxiuSortida);  // Cerrar inmediatamente
-  }
+  pthread_exit(NULL);
 }
 
 /* programa principal */
@@ -214,7 +188,7 @@ int main(int n_args, const char *ll_args[])
   /* Verificar arguments */
   if ((n_args != 4) && (n_args != 6))
   {
-    fprintf(stderr,"Comanda: ./tron2 num_oponents variabilitat fitxer [retard_min retard_max]\n");
+    fprintf(stderr,"Comanda: ./tron4 num_oponents variabilitat fitxer [retard_min retard_max]\n");
     fprintf(stderr,"         on num_oponents indica el nombre d'oponents (1-9)\n");
     fprintf(stderr,"         variabilitat indica la frequencia de canvi de direccio\n");
     fprintf(stderr,"         de l'oponent: de 0 a 3 (0- gens variable, 3- molt variable),\n");
@@ -333,14 +307,21 @@ int main(int n_args, const char *ll_args[])
   // (Fase3) Fins aquí tot igual
   //////////////////////////////
 
+  /* Inicializar tiempo y crear thread usuario */
+  time_t momentInici = time(NULL);
+  if (pthread_create(&threadUsuari, NULL, mou_usuari, NULL) != 0) {
+    perror("Error en crear el thread");
+    exit(1);
+  }
+
   /* Creació dels processos fills (un per cada oponent) */
   for (i = 0; i < num_oponents; i++) {
     id_proc[i] = fork();
     if (id_proc[i] == (pid_t) 0) {      /* Codi del procés fill */
-      char params[15][30];  /* Array para convertir parámetros a strings */
+      char params[18][30];  /* Aumentar array para los 18 parámetros */
       
       /* Convertir todos los parámetros a strings */
-      sprintf(params[0], "oponent3");    /* nombre del programa */
+      sprintf(params[0], "oponent4");    /* nombre del programa */
       sprintf(params[1], "%s", ll_args[3]);     /* arxiuSortida path */
       sprintf(params[2], "%d", id_fi1);
       sprintf(params[3], "%d", id_fi2);
@@ -356,11 +337,13 @@ int main(int n_args, const char *ll_args[])
       sprintf(params[13], "%d", opo[i].f); /* posición f inicial */
       sprintf(params[14], "%d", opo[i].c); /* posición c inicial */
       sprintf(params[15], "%d", opo[i].d); /* dirección inicial */
+      sprintf(params[16], "%d", opo[i].f); /* posición inicial f */
+      sprintf(params[17], "%d", opo[i].c); /* posición inicial c */
 
-      execlp("./oponent3", params[0], params[1], params[2], params[3], 
+      execlp("./oponent4", params[0], params[1], params[2], params[3], 
              params[4], params[5], params[6], params[7], params[8], 
              params[9], params[10], params[11], params[12], params[13], 
-             params[14], params[15], (char *)0);
+             params[14], params[15], params[16], params[17], (char *)0);
 
       fprintf(stderr,"Error en la execució del proces fill %d.\n", i);
       exit(4);
@@ -374,31 +357,44 @@ int main(int n_args, const char *ll_args[])
 
   /* Bucle principal del joc */
   char strin[45];
-  do {
-    mou_usuari();  // Moure l'usuari una posició
-    sprintf(strin,"Vius: %d", *p_vius);  // Mostrar info en última línia
+  time_t ultimaActualitzacio = time(NULL);
+  
+  while (!(*p_fi1) && !(*p_fi2)) {
+    time_t tempsActual = time(NULL);
+    
+    // Update clock display every second
+    if (tempsActual > ultimaActualitzacio) {
+      int tempsJugat = tempsActual - momentInici;
+      sprintf(strin,"Temps: %02d:%02d", tempsJugat/60, tempsJugat%60);
+      ultimaActualitzacio = tempsActual;
+    }
+    
     win_escristr(strin);
-    win_update();  // Actualitzar pantalla
-    win_retard(75);  // Ajustar el retard del usuario a 75ms
-  } while (!(*p_fi1) && !(*p_fi2));
+    win_update();
+    win_retard(75);  // Keep game delay at 75ms
+  }
 
-  /* Espera a que tots els fills acabin abans de finalitzar */
+  /* Espera threads y procesos */
+  pthread_join(threadUsuari, NULL);
   for (i = 0; i < num_oponents; i++) {
     waitpid(id_proc[i], NULL, 0);
   }
 
-  win_fi();  // Cerrar ventana antes de mostrar el mensaje
+  win_fi();
 
-  /* Mostrar mensaje final en la terminal */
+  /* Mostrar tiempo total y mensaje final */
+  int total = time(NULL) - momentInici;
+  
   if (*p_fi1 == -1) {
-    printf("\nS'ha aturat el joc amb tecla RETURN!\n\n");
+    printf("\nS'ha aturat el joc amb tecla RETURN!\n");
   } else { 
     if (*p_fi2) {
-      printf("\nHa guanyat l'usuari!\n\n");
+      printf("\nHa guanyat l'usuari!\n");
     } else {
-      printf("\nHa guanyat l'ordinador!\n\n");
+      printf("\nHa guanyat l'ordinador!\n");
     }
   }
+  printf("Temps total: %02d:%02d\n\n", total/60, total%60);
 
   /* Liberar recursos */
   free(p_usu);
