@@ -168,7 +168,7 @@ void *mou_usuari(void *arg)
       fclose(arxiuSortida);
       break;
     }
-    win_retard(85);
+    win_retard(65);
   }
 
   pthread_exit(NULL);
@@ -259,6 +259,17 @@ int main(int n_args, const char *ll_args[])
   /* Inicializar acceso a la ventana */
   win_set(p_pantalla, n_fil, n_col);
 
+  /* Hi había un bug, que no tenía a veure amb el programa
+  Aquest feia que cada x execucions apareguessin valors aleatoris
+  a la terminal. S'ha solucionat amb un bucle després d'iniciar que neteja
+  tot el que es pugui haver creat. (Respectant els limits "+") */
+  for(i = 1; i < n_fil-2; i++) {
+    for(int j = 1; j < n_col-1; j++) {
+      win_escricar(i, j, ' ', NO_INV);
+    }
+  }
+  win_update();
+
   p_usu = calloc(n_fil*n_col/2, sizeof(pos));	/* demana memoria dinamica */
   /* Reservar memoria per les posicions dels oponents */
   p_opo = calloc(num_oponents, sizeof(pos*));     /* vector de punters */
@@ -318,7 +329,7 @@ int main(int n_args, const char *ll_args[])
   for (i = 0; i < num_oponents; i++) {
     id_proc[i] = fork();
     if (id_proc[i] == (pid_t) 0) {      /* Codi del procés fill */
-      char params[18][30];  /* Aumentar array para los 18 parámetros */
+      char params[25][40];  /* Aumentar array para los 18 parámetros */
       
       /* Convertir todos los parámetros a strings */
       sprintf(params[0], "oponent4");    /* nombre del programa */
