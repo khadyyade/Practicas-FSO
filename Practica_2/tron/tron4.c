@@ -82,11 +82,11 @@ void esborrar_posicions(pos p_pos[], int n_pos)
 {
   int i;
   
-  for (i=n_pos-1; i>=0; i--)		/* de l'ultima cap a la primera */
+  for (i=n_pos-1; i>=0; i--)
   {
-    win_escricar(p_pos[i].f,p_pos[i].c,' ',NO_INV);	/* esborra una pos. */
+    win_escricar(p_pos[i].f,p_pos[i].c,' ',NO_INV);
+    win_update();  // Actualizar después de cada borrado
     win_retard(6);
-    win_update();  // Actualitzar la terminal (pantalla)
   }
 }
 
@@ -329,7 +329,7 @@ int main(int n_args, const char *ll_args[])
   for (i = 0; i < num_oponents; i++) {
     id_proc[i] = fork();
     if (id_proc[i] == (pid_t) 0) {      /* Codi del procés fill */
-      char params[25][40];  /* Aumentar array para los 18 parámetros */
+      char params[25][60];
       
       /* Convertir todos los parámetros a strings */
       sprintf(params[0], "oponent4");    /* nombre del programa */
@@ -377,12 +377,13 @@ int main(int n_args, const char *ll_args[])
     if (tempsActual > ultimaActualitzacio) {
       int tempsJugat = tempsActual - momentInici;
       sprintf(strin,"Temps: %02d:%02d", tempsJugat/60, tempsJugat%60);
+      win_escristr(strin);
+      win_update();
       ultimaActualitzacio = tempsActual;
     }
     
-    win_escristr(strin);
-    win_update();
-    win_retard(75);  // Keep game delay at 75ms
+    usleep(10000);  // Añadir pequeña pausa de 10ms
+    win_update();    // Forzar actualización más frecuente
   }
 
   /* Espera threads y procesos */
