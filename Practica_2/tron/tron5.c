@@ -1,11 +1,11 @@
 /*****************************************************************************/
 /*									     */
-/*				     tron4.c				     */
+/*				     tron5.c				     */
 /*									     */
 /*	   $ gcc -c winsuport2.c -o winsuport2.o			     	     */
-/*	   $ gcc tron4.c winsuport2.o memoria.o -o tron4 -lcurses -lpthread			 */
-/*     $ gcc oponent4.c winsuport2.o memoria.o -o oponent4 -lcurses                */
-/*	   $ ./tron4 num_oponents variabilitat fitxer [retard_min retard_max]				     */
+/*	   $ gcc tron5.c winsuport2.o memoria.o missatge.o -o tron5 -lcurses -lpthread			 */
+/*     $ gcc oponent5.c winsuport2.o memoria.o missatge.o -o oponent5 -lcurses                */
+/*	   $ ./tron5 num_oponents variabilitat fitxer [retard_min retard_max]				     */
 /*									     */
 /*****************************************************************************/
 
@@ -17,6 +17,7 @@
 #include <string.h>
 #include "winsuport2.h"
 #include "memoria.h"
+#include "missatge.h" // (Fase 5) Llibreria per enviar missatges
 #include <pthread.h>
 #include <time.h>
 
@@ -37,6 +38,19 @@ int id_pantalla;            /* ID zona memoria compartida per la pantalla */
 void *p_pantalla;           /* Punter memoria compartida pantalla */
 int id_vius;               /* ID zona memoria compartida pel contador d'oponents vius */
 int *p_vius;               /* Punter a la zona de memoria compartida pel contador */
+
+// (Fase 5) Variable per identificar els missatges
+int id_missatges;                  /* cola de missatges */
+
+// (Fase 5) Variable per identificar els mutex
+pthread_mutex_t mutexTrajecte = PTHREAD_MUTEX_INITIALIZER;
+
+// (Fase 5) struct de dades per les col·lisions
+typedef struct {
+    int f;          /* fila */
+    int c;          /* columna */
+    int oponent;    /* index de l'oponent que ha xocat */
+} dadesColisions;
 
 /* definir estructures d'informacio per usari*/
 typedef struct {		/* per un tron (usuari) */
@@ -127,13 +141,16 @@ void inicialitza_joc(void)
 }
 
 /* Funció pel moviment de l'usuari com thread */
+// (Fase 5) Hem de modificar la llògica ja que ara l'usuari només es mor quan xoca amb les parets
+// (Fase 5) A més, si el tron usuari xoca amb un tron oponent li ha d’enviar un missatge a aquest oponent.
 void *mou_usuari(void *arg)
 {
   char cars;
   tron seg;
   int tecla;
+  dadesColisions colisio; // (Fase 5) Creem una variable del tipus col·lisió
   
-  while (!(*p_fi1) && !(*p_fi2)) {
+  while (!(*p_fi1)) /* (Fase 5) Abans feiem while (!(*p_fi1) && !(*p_fi2)) { }, però ara no fa falta controlar p_fi2 */ {
     tecla = win_gettec();
     if (tecla != 0)
     switch (tecla)
@@ -157,16 +174,16 @@ void *mou_usuari(void *arg)
       p_usu[n_usu].c = usu.c;
       n_usu++;
     }
-
-    if (cars != ' ') {
+    else if (cars == '+') { // (Fase 5) Només morim si col·lisionem contra una paret
       esborrar_posicions(p_usu, n_usu);
       *p_fi1 = 1;
-      arxiuSortida = fopen(nomArxiu, "a");
-      fprintf(arxiuSortida, "L'usuari (PID: %d) ha xocat a: (%d,%d)\n",
-              getpid(), seg.f, seg.c);
-      fflush(arxiuSortida);
-      fclose(arxiuSortida);
       break;
+    }
+    else if (cars >= '1' && cars <= '9') { // (Fase 5) Si el caràcter amb el que hem xocat es un numero entre 1 i 9, és un oponent i li hem d'enviar un missatge amb sendM()
+      colisio.f = seg.f;
+      colisio.c = seg.c;
+      colisio.oponent = cars - '1';
+      sendM(id_missatges, &colisio, sizeof(colisio)); // (Fase 5) Afegim les dades a la variable de col·lisió i l'enviem
     }
     win_retard(65);
   }
@@ -177,8 +194,6 @@ void *mou_usuari(void *arg)
 /* programa principal */
 int main(int n_args, const char *ll_args[])
 {
-  
-  // (Fase3) Aquesta part del main es igual
 
   int retwin;
   int i, id_proc[MAX_OPONENTS];
@@ -188,7 +203,7 @@ int main(int n_args, const char *ll_args[])
   /* Verificar arguments */
   if ((n_args != 4) && (n_args != 6))
   {
-    fprintf(stderr,"Comanda: ./tron4 num_oponents variabilitat fitxer [retard_min retard_max]\n");
+    fprintf(stderr,"Comanda: ./tron5 num_oponents variabilitat fitxer [retard_min retard_max]\n");
     fprintf(stderr,"         on num_oponents indica el nombre d'oponents (1-9)\n");
     fprintf(stderr,"         variabilitat indica la frequencia de canvi de direccio\n");
     fprintf(stderr,"         de l'oponent: de 0 a 3 (0- gens variable, 3- molt variable),\n");
@@ -310,13 +325,12 @@ int main(int n_args, const char *ll_args[])
   *p_fi2 = 0;
   *p_vius = num_oponents;  /* Inicialitzem amb el nombre total d'oponents */
 
-  /* Eliminar creación de semáforos */
-  /* semPantalla = ini_sem(1);
-  semArxiu = ini_sem(1);
-  semFinal = ini_sem(1); */
-
-  // (Fase3) Fins aquí tot igual
-  //////////////////////////////
+  /* (Fase 5) Hem de crear la zona (mailbox) on afegir els missatges (del tipus cua) */
+  id_missatges = ini_mis();
+  if (id_missatges < 0) {
+    fprintf(stderr,"Error al crear la cua de missatges\n");
+    exit(6);
+  }
 
   /* Crear thread usuari */
   if (pthread_create(&threadUsuari, NULL, mou_usuari, NULL) != 0) {
@@ -331,7 +345,7 @@ int main(int n_args, const char *ll_args[])
       char params[25][60];
       
       /* Convertir todos los parámetros a strings */
-      sprintf(params[0], "oponent4");    /* nombre del programa */
+      sprintf(params[0], "oponent5");    /* nombre del programa */
       sprintf(params[1], "%s", ll_args[3]);     /* arxiuSortida path */
       sprintf(params[2], "%d", id_fi1);
       sprintf(params[3], "%d", id_fi2);
@@ -349,11 +363,12 @@ int main(int n_args, const char *ll_args[])
       sprintf(params[15], "%d", opo[i].d); /* dirección inicial */
       sprintf(params[16], "%d", opo[i].f); /* posición inicial f */
       sprintf(params[17], "%d", opo[i].c); /* posición inicial c */
+      sprintf(params[18], "%d", id_missatges);   /* ID del buzón de mensajes */
 
-      execlp("./oponent4", params[0], params[1], params[2], params[3], 
+      execlp("./oponent5", params[0], params[1], params[2], params[3], 
              params[4], params[5], params[6], params[7], params[8], 
              params[9], params[10], params[11], params[12], params[13], 
-             params[14], params[15], params[16], params[17], (char *)0);
+             params[14], params[15], params[16], params[17], params[18], (char *)0);
 
       fprintf(stderr,"Error en la execució del proces fill %d.\n", i);
       exit(4);
@@ -435,6 +450,10 @@ int main(int n_args, const char *ll_args[])
   fprintf(arxiuSortida, ">>> FINAL DEL JOC <<<\n");
   fflush(arxiuSortida);
   fclose(arxiuSortida);
+
+  /* (Fase 5) Només queda lliberar els recursos */
+  pthread_mutex_destroy(&mutexTrajecte);
+  elim_mis(id_missatges);
 
   return(0);
 }

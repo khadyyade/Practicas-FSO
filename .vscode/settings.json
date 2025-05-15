@@ -1,5 +1,8 @@
 {
     "files.associations": {
-        "chrono": "c"
+        "chrono": "c",
+        "condition_variable": "c",
+        "ctime": "c",
+        "mutex": "c"
     }
 }
