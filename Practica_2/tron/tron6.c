@@ -53,11 +53,13 @@ typedef struct {
     int oponent;    /* index de l'oponent que ha xocat */
 } dadesColisions;
 
-/* Variables globales para la habilidad especial */
-int habilidad_activa = 0;
+// (Fase 6) Nueva habilidad
+int habilitat_activa = 0;
 int tiempo_restante = 0;
-pthread_t thread_contador;
-pthread_mutex_t mutex_habilidad = PTHREAD_MUTEX_INITIALIZER;
+int habilitat_disponible = 1;  // Nueva variable: 1 = disponible, 0 = ya usada
+pthread_t thread_comptador;
+pthread_mutex_t mutex_habilitat = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_pantalla = PTHREAD_MUTEX_INITIALIZER;  // (Fase 6) Mutex per la pantalla
 
 /* definir estructures d'informacio per usari*/
 typedef struct {		/* per un tron (usuari) */
@@ -111,26 +113,31 @@ void esborrar_posicions(pos p_pos[], int n_pos)
   }
 }
 
-/* Función para mostrar el contador de la habilidad */
-void *contador_habilidad(void *arg) {
+// (Fase 6) Nova funció (thread) que canvia tot el rastre de l'usuari pel numero de segons que queden d'habilitat
+void *comptador_habilitat(void *arg) {
     while (tiempo_restante > 0) {
-        // Actualizar el rastro con el tiempo restante
+        pthread_mutex_lock(&mutex_pantalla);
+        // (Fase 6) Escriu el numero de segons que queden
         for(int i = 0; i < n_usu; i++) {
             win_escricar(p_usu[i].f, p_usu[i].c, '0' + tiempo_restante, INVERS);
         }
         win_update();
+        pthread_mutex_unlock(&mutex_pantalla);
+        
         sleep(1);
-        pthread_mutex_lock(&mutex_habilidad);
+        pthread_mutex_lock(&mutex_habilitat);
         tiempo_restante--;
+        // (Fase 6) Si el temps s'acaba hem de tornar a posar-ho a 5, ens assegurem
         if (tiempo_restante == 0) {
-            habilidad_activa = 0;
-            // Restaurar el rastro original
+            habilitat_activa = 0; // (Fase 6) Desactiva l'habilitat
+            pthread_mutex_lock(&mutex_pantalla);
             for(int i = 0; i < n_usu; i++) {
                 win_escricar(p_usu[i].f, p_usu[i].c, '0', INVERS);
             }
+            win_update();
+            pthread_mutex_unlock(&mutex_pantalla);
         }
-        pthread_mutex_unlock(&mutex_habilidad);
-        win_update();
+        pthread_mutex_unlock(&mutex_habilitat);
     }
     return NULL;
 }
@@ -191,12 +198,13 @@ void *mou_usuari(void *arg)
       case TEC_AVALL:	usu.d = 2; break;
       case TEC_DRETA:	usu.d = 3; break;
       case TEC_RETURN:	*p_fi1 = -1; break;
-      case 'e':         // Activar habilidad especial
+      case 'e':         // (Fase 5) Si cliquem la e s'activa l'habilitat
       case 'E':
-          if (!habilidad_activa && tiempo_restante == 0) {
-              habilidad_activa = 1;
+          if (!habilitat_activa && tiempo_restante == 0 && habilitat_disponible) {
+              habilitat_activa = 1;
               tiempo_restante = 5;
-              pthread_create(&thread_contador, NULL, contador_habilidad, NULL);
+              habilitat_disponible = 0;  // (Fase 6) L'habilitat només es pot fer servir un cop
+              pthread_create(&thread_comptador, NULL, comptador_habilitat, NULL);
           }
           break;
     }
@@ -205,11 +213,13 @@ void *mou_usuari(void *arg)
     seg.c = usu.c + dc[usu.d];
 
     cars = win_quincar(seg.f,seg.c);
-    
+    // (Fase 6) L'única cosa igual si hi ha habilitat activa o no es que la paret et mata
     if (cars == '+') { // Las paredes siempre matan
+      pthread_mutex_lock(&mutex_pantalla);
       esborrar_posicions(p_usu, n_usu);
-      *p_fi1 = 1;
       win_update();
+      pthread_mutex_unlock(&mutex_pantalla);
+      *p_fi1 = 1;
       arxiuSortida = fopen(nomArxiu, "a");
       if (arxiuSortida) {
         fprintf(arxiuSortida, "L'usuari ha xocat contra la paret en la posició (%d,%d)\n", 
@@ -219,13 +229,13 @@ void *mou_usuari(void *arg)
       }
       return NULL;
     }
-    else if (cars == ' ' || (habilidad_activa && (cars == 'X' || cars == 'O' || (cars >= '1' && cars <= '9')))) {
-      // Movimiento permitido si:
-      // - Es un espacio vacío
-      // - La habilidad está activa y es X, O o un número (oponente)
+    // (Fase 6) Amb l'habilitat, el programa es comporta igual que si trepitjessim un espai
+    else if (cars == ' ' || (habilitat_activa && (cars == 'X' || cars == 'O' || (cars >= '1' && cars <= '9')))) {
+      pthread_mutex_lock(&mutex_pantalla);
       usu.f = seg.f;
       usu.c = seg.c;
-      if (habilidad_activa) {
+      // (Fase 6) Si hi ha habilitat activa, el programa escriu en comptes de 0, el temps restant
+      if (habilitat_activa) {
         win_escricar(usu.f, usu.c, '0' + tiempo_restante, INVERS);
       } else {
         win_escricar(usu.f, usu.c, '0', INVERS);
@@ -233,8 +243,10 @@ void *mou_usuari(void *arg)
       p_usu[n_usu].f = usu.f;
       p_usu[n_usu].c = usu.c;
       n_usu++;
+      win_update();
+      pthread_mutex_unlock(&mutex_pantalla);
     }
-    else if (cars >= '1' && cars <= '9') { // Colisión con oponente (sin habilidad)
+    else if (cars >= '1' && cars <= '9') { // (Fase 6) Si no, si hi ha colisió contra un oponent sense l'habilitat activa
       colisio.f = seg.f;
       colisio.c = seg.c;
       colisio.oponent = cars - '1';
@@ -247,7 +259,6 @@ void *mou_usuari(void *arg)
       }
       sendM(id_missatges, &colisio, sizeof(colisio));
     }
-    // Si no es ninguno de los casos anteriores, simplemente no nos movemos
     
     if (*p_fi2) return NULL;
     win_retard(65);
@@ -511,8 +522,10 @@ int main(int n_args, const char *ll_args[])
   elim_mem(id_vius);
   elim_mem(id_pantalla);
   
+  // (Fase 6) Destruïm els mutex
   pthread_mutex_destroy(&mutexTrajecte);
-  pthread_mutex_destroy(&mutex_habilidad);
+  pthread_mutex_destroy(&mutex_habilitat);
+  pthread_mutex_destroy(&mutex_pantalla);
 
   /* Escribir mensaje final en archivo */
   arxiuSortida = fopen(nomArxiu, "a");
