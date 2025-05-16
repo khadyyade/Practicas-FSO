@@ -1,11 +1,11 @@
 /*****************************************************************************/
 /*									     */
-/*				     tron5.c				     */
+/*				     tron6.c				     */
 /*									     */
 /*	   $ gcc -c winsuport2.c -o winsuport2.o			     	     */
-/*	   $ gcc tron5.c winsuport2.o memoria.o missatge.o -o tron5 -lcurses -lpthread			 */
-/*     $ gcc oponent5.c winsuport2.o memoria.o missatge.o -o oponent5 -lcurses                */
-/*	   $ ./tron5 num_oponents variabilitat fitxer [retard_min retard_max]				     */
+/*	   $ gcc tron6.c winsuport2.o memoria.o missatge.o -o tron6 -lcurses -lpthread			 */
+/*     $ gcc oponent6.c winsuport2.o memoria.o missatge.o -o oponent6 -lcurses                */
+/*	   $ ./tron6 num_oponents variabilitat fitxer [retard_min retard_max]				     */
 /*									     */
 /*****************************************************************************/
 
@@ -53,13 +53,13 @@ typedef struct {
     int oponent;    /* index de l'oponent que ha xocat */
 } dadesColisions;
 
-// (Fase 6) Nueva habilidad
+// (Fase 6) Variables per l'activitat
 int habilitat_activa = 0;
 int tiempo_restante = 0;
-int habilitat_disponible = 1;  // Nueva variable: 1 = disponible, 0 = ya usada
+int habilitat_disponible = 1;
 pthread_t thread_comptador;
 pthread_mutex_t mutex_habilitat = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_pantalla = PTHREAD_MUTEX_INITIALIZER;  // (Fase 6) Mutex per la pantalla
+pthread_mutex_t mutex_pantalla = PTHREAD_MUTEX_INITIALIZER;
 
 /* definir estructures d'informacio per usari*/
 typedef struct {		/* per un tron (usuari) */

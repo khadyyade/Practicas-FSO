@@ -83,7 +83,7 @@ void esborrar_posicions(pos p_pos[], int n_pos)
 }
 
 /* funcio per inicialitar les variables i visualitzar l'estat inicial del joc */
-void inicialitza_joc(void)
+
 void inicialitza_joc(void)
 {
   char strin[45];

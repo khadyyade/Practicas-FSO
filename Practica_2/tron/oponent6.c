@@ -1,11 +1,11 @@
 /*****************************************************************************/
 /*									     */
-/*				     oponent5.c				     */
+/*				     oponent6.c				     */
 /*									     */
 /*	   $ gcc -c winsuport2.c -o winsuport2.o			     	     */
-/*	   $ gcc tron5.c winsuport2.o memoria.o missatge.o -o tron5 -lcurses -lpthread			 */
-/*     $ gcc oponent5.c winsuport2.o memoria.o missatge.o -o oponent5 -lcurses -lpthread                */
-/*	   $ ./tron5 num_oponents variabilitat fitxer [retard_min retard_max]				     */
+/*	   $ gcc tron6.c winsuport2.o memoria.o missatge.o -o tron6 -lcurses -lpthread			 */
+/*     $ gcc oponent6.c winsuport2.o memoria.o missatge.o -o oponent6 -lcurses -lpthread                */
+/*	   $ ./tron6 num_oponents variabilitat fitxer [retard_min retard_max]				     */
 /*									     */
 /*****************************************************************************/
 
