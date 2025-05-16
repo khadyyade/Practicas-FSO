@@ -179,12 +179,26 @@ void *mou_usuari(void *arg)
       esborrar_posicions(p_usu, n_usu);
       *p_fi1 = 1;
       win_update();
+      arxiuSortida = fopen(nomArxiu, "a"); // Abrir archivo antes de escribir
+      if (arxiuSortida) {
+        fprintf(arxiuSortida, "L'usuari ha xocat contra la paret en la posició (%d,%d)\n", 
+                seg.f, seg.c);
+        fflush(arxiuSortida);
+        fclose(arxiuSortida);
+      }
       return NULL;  // Salir inmediatamente cuando chocamos
     }
     else if (cars >= '1' && cars <= '9') { // (Fase 5) Si el caràcter amb el que hem xocat es un numero entre 1 i 9, és un oponent i li hem d'enviar un missatge amb sendM()
       colisio.f = seg.f;
       colisio.c = seg.c;
       colisio.oponent = cars - '1';
+      arxiuSortida = fopen(nomArxiu, "a"); // Abrir archivo antes de escribir
+      if (arxiuSortida) {
+        fprintf(arxiuSortida, "L'usuari ha xocat contra l'oponent %d en la posició (%d,%d)\n", 
+                colisio.oponent + 1, seg.f, seg.c);
+        fflush(arxiuSortida);
+        fclose(arxiuSortida);
+      }
       sendM(id_missatges, &colisio, sizeof(colisio)); // (Fase 5) Afegim les dades a la variable de col·lisió i l'enviem
     }
     if (*p_fi2) return NULL;  // Salir si han muerto todos los oponentes
@@ -352,7 +366,7 @@ int main(int n_args, const char *ll_args[])
       sprintf(params[1], "%s", ll_args[3]);     /* arxiuSortida path */
       sprintf(params[2], "%d", id_fi1);
       sprintf(params[3], "%d", id_fi2);
-      sprintf(params[4], "%d", id_pantalla);    /* ID memoria compartida campo */
+      sprintf(params[4], "%d", id_pantalla);    /* ID mem compartida */
       sprintf(params[5], "%d", id_vius);
       sprintf(params[6], "%d", RET_MIN);
       sprintf(params[7], "%d", RET_MAX);
@@ -360,13 +374,13 @@ int main(int n_args, const char *ll_args[])
       sprintf(params[9], "%d", n_col);     
       sprintf(params[10], "%d", varia);    
       sprintf(params[11], "%d", retard);
-      sprintf(params[12], "%d", i);        /* índice del oponente */
-      sprintf(params[13], "%d", opo[i].f); /* posición f inicial */
-      sprintf(params[14], "%d", opo[i].c); /* posición c inicial */
-      sprintf(params[15], "%d", opo[i].d); /* dirección inicial */
-      sprintf(params[16], "%d", opo[i].f); /* posición inicial f */
-      sprintf(params[17], "%d", opo[i].c); /* posición inicial c */
-      sprintf(params[18], "%d", id_missatges);   /* ID del buzón de mensajes */
+      sprintf(params[12], "%d", i);        /* index del oponent */
+      sprintf(params[13], "%d", opo[i].f); /* posició f inicial */
+      sprintf(params[14], "%d", opo[i].c); /* posició c inicial */
+      sprintf(params[15], "%d", opo[i].d); /* direcció inicial */
+      sprintf(params[16], "%d", opo[i].f); /* posició inicial f */
+      sprintf(params[17], "%d", opo[i].c); /* posició inicial c */
+      sprintf(params[18], "%d", id_missatges);   /* (Fase 5) ID del mailbox */
 
       execlp("./oponent5", params[0], params[1], params[2], params[3], 
              params[4], params[5], params[6], params[7], params[8], 
@@ -462,6 +476,7 @@ int main(int n_args, const char *ll_args[])
       fprintf(arxiuSortida, "Fi del joc: ha guanyat l'ordinador (PID: %d) - L'usuari ha xocat\n", getpid());
     }
   }
+  fprintf(arxiuSortida, "Temps total de joc: %02d:%02d\n", total/60, total%60);
   fprintf(arxiuSortida, ">>> FINAL DEL JOC <<<\n");
   fflush(arxiuSortida);
   fclose(arxiuSortida);

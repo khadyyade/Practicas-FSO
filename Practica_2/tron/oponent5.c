@@ -82,11 +82,8 @@ void esborrar_posicions(pos p_pos[], int n_pos)
   }
 }
 
-// (Fase 5) Definim els diferents threads que necesitarem
-
-pthread_t thread_receptor;    // (Fase 5) Thread que fa la funcio *rebre_missatges()
-pthread_t thread_tipus;       // (Fase 5) Thread per determinar el tipus d'oponent
-pthread_t threadEnrere;    // (Fase 5) Thread per calcular el moviment
+// (Fase 5) Thread que fa la funcio *rebre_missatges()
+pthread_t thread_receptor;
 
 // (Fase 5) Creem el mutex (semàfor binari) per evitar que dos threads accedeixin a mem compartida
 
@@ -121,7 +118,7 @@ void *rebre_missatges(void *arg) {
     
     while (!(*p_fi1) && !(*p_fi2)) {
         if (*p_fi1 || *p_fi2) {
-            pthread_exit(NULL);  // (Fase 5) Hem de foprçar aquesta condició per a que el thread no sigui infinit
+            pthread_exit(NULL);  // (Fase 5) Hem de forçar aquesta condició per a que el thread no sigui infinit
         }
         if (receiveM(id_missatges, &col_data) > 0) {
             if (*p_fi1 || *p_fi2) return NULL;  // (Fase 5) Afegim més controls per parar el thread quan el joc acabi (vam tenir problemes amb la finalització del thread)
@@ -311,8 +308,8 @@ int main(int n_args, char *ll_args[])
               win_update();
           }
 
-          fprintf(arxiuSortida, "L'oponent %d (PID: %d) ha xocat. Queden %d oponents vius\n", 
-                  index, getpid(), *p_vius);
+          fprintf(arxiuSortida, "L'oponent %d (PID: %d) ha xocat en la posició (%d,%d). Queden %d oponents vius\n", 
+                  index, getpid(), opo[index].f, opo[index].c, *p_vius);
           fflush(arxiuSortida);  // Forzar escritura
           
           break;  /* Sortim del bucle per acabar aquest oponent */
@@ -343,7 +340,7 @@ int main(int n_args, char *ll_args[])
       if (arxiuSortida)
         fprintf(arxiuSortida, "L'oponent %d (PID: %d) s'ha mogut a (%d,%d)\n",
                 index, getpid(), opo[index].f, opo[index].c);
-        fflush(arxiuSortida);  // Forzar escritura
+        fflush(arxiuSortida);  // Forçar escriptura
     }
     else {
       esborrar_posicions(p_opo[0], mida_trajecte);  // Usamos mida_trajecte en lugar de n_opo[index]
