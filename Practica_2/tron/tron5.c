@@ -22,6 +22,7 @@
 #include <time.h>
 
 
+
 /* Variable global pel fitxer de sortida */
 FILE *arxiuSortida = NULL;
 
@@ -177,7 +178,8 @@ void *mou_usuari(void *arg)
     else if (cars == '+') { // (Fase 5) Només morim si col·lisionem contra una paret
       esborrar_posicions(p_usu, n_usu);
       *p_fi1 = 1;
-      break;
+      win_update();
+      return NULL;  // Salir inmediatamente cuando chocamos
     }
     else if (cars >= '1' && cars <= '9') { // (Fase 5) Si el caràcter amb el que hem xocat es un numero entre 1 i 9, és un oponent i li hem d'enviar un missatge amb sendM()
       colisio.f = seg.f;
@@ -185,10 +187,11 @@ void *mou_usuari(void *arg)
       colisio.oponent = cars - '1';
       sendM(id_missatges, &colisio, sizeof(colisio)); // (Fase 5) Afegim les dades a la variable de col·lisió i l'enviem
     }
+    if (*p_fi2) return NULL;  // Salir si han muerto todos los oponentes
     win_retard(65);
   }
 
-  pthread_exit(NULL);
+  return NULL;
 }
 
 /* programa principal */
@@ -397,16 +400,24 @@ int main(int n_args, const char *ll_args[])
       ultimaActualitzacio = tempsActual;
     }
     
+    if (*p_fi1 || *p_fi2) break;  // Salir inmediatamente si se detecta fin
     usleep(10000);  // Pausa de 10 ms
     win_update();
   }
 
-  /* Espera threads y procesos */
-  pthread_join(threadUsuari, NULL);
+  /* Esperar a que tots els recursos s'alliberin */
+  win_update();
+  win_retard(400);
+
+  /* Primero matar los procesos hijos */
   for (i = 0; i < num_oponents; i++) {
     waitpid(id_proc[i], NULL, 0);
   }
 
+  /* Esperar al thread usuario */
+  pthread_join(threadUsuari, NULL);
+
+  /* Liberar recursos en orden */
   win_fi();
 
   /* Mostrar temps total i missatge */
@@ -423,7 +434,7 @@ int main(int n_args, const char *ll_args[])
   }
   printf("Temps total: %02d:%02d\n\n", total/60, total%60);
 
-  /* Liberar recursos */
+  /* Alliberar mem i recursos */
   free(p_usu);
   for(i = 0; i < num_oponents; i++) {
     if(p_opo[i]) free(p_opo[i]);
@@ -431,10 +442,14 @@ int main(int n_args, const char *ll_args[])
   free(p_opo);
   free(n_opo);
 
-  elim_mem(id_fi1);
+  /* Eliminar recursos IPC en orden */
+  elim_mis(id_missatges);  // (Fase 5) Eliminem els missatges
+  elim_mem(id_fi1);        // Luego memoria compartida
   elim_mem(id_fi2);
   elim_mem(id_vius);
   elim_mem(id_pantalla);
+  
+  pthread_mutex_destroy(&mutexTrajecte);
 
   /* Escribir mensaje final en archivo */
   arxiuSortida = fopen(nomArxiu, "a");
@@ -451,9 +466,7 @@ int main(int n_args, const char *ll_args[])
   fflush(arxiuSortida);
   fclose(arxiuSortida);
 
-  /* (Fase 5) Només queda lliberar els recursos */
-  pthread_mutex_destroy(&mutexTrajecte);
-  elim_mis(id_missatges);
-
+  exit(0);
   return(0);
+
 }

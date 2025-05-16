@@ -22,30 +22,23 @@
 
 #define MAX_OPONENTS 9
 
-/* Funciones per la taula compartida */
-// (Fase3) Hay que definirlas tambien en oponent3
-/* char win_quincar(int f, int c);
-void win_escricar(int f, int c, char car); */
-
-/* Variable global pel fitxer de sortida */
-// (Fase3) Rebem el punter de tron3
+/* Variable pel fitxer de sortida */
 FILE *arxiuSortida = NULL;
 
 /* Variables per memoria compartida */
-// (Fase3) Les rebem totes de tron3
 int id_fi1, id_fi2;         /* IDs zona memoria compartida pels flags fi1/fi2 */
 int *p_fi1, *p_fi2;         /* Punters a les zones de memoria compartida */
 int id_pantalla;            /* ID zona memoria compartida per la pantalla */
 void *p_pantalla;           /* Punter memoria compartida pantalla */
-int id_vius;               /* ID zona memoria compartida pel contador d'oponents vius */
-int *p_vius;               /* Punter a la zona de memoria compartida pel contador */
-int id_missatges;                /* (Fase 5) Zona de memòria pels missatges */
+int id_vius;                /* ID zona memoria compartida pel contador d'oponents vius */
+int *p_vius;                /* Punter a la zona de memoria compartida pel contador */
+int id_missatges;           // (Fase 5) Zona de memòria pels missatges
 
-/* definir estructures d'informacio per oponent*/
-typedef struct {		/* per un tron (oponent) */
-	int f;				/* posicio actual: fila */
-	int c;				/* posicio actual: columna */
-	int d;				/* direccio actual: [0..3] */
+/* definir estructures d'informacio per oponent */
+typedef struct {
+	int f;				    /* fila     */
+	int c;				    /* columna  */
+	int d;				    /* direccio */
 } tron;
 
 typedef struct {		/* per una entrada de la taula de posicio */
@@ -53,31 +46,18 @@ typedef struct {		/* per una entrada de la taula de posicio */
 	int c;
 } pos;
 
-// (Fase3)
-
 tron opo[MAX_OPONENTS];
-
-
-// (Fase3) Tot i que s'utilitzen en els oponents les controla el programa principal 
-// Poden ser modificades per paràmetre al executar tron3
-// Les rebrem com paràmetres (ja que no canvien)
 
 int RET_MIN;     /* valor mínim del retard */
 int RET_MAX;    /* valor màxim del retard */
 
-// (Fase3) Definits a tron3 però les utilitzem a oponent3 (no canvien)
-// Les rebem com a paràmetre
 int n_fil, n_col;		/* dimensions del camp de joc */
 
-// (Fase3) En tron3.c i en oponent3.c
 int df[] = {-1, 0, 1, 0};	/* moviments de les 4 direccions possibles */
 int dc[] = {0, -1, 0, 1};	/* dalt, esquerra, baix, dreta */
 
-// (Fase3) Ens les passen desde tron3
 int varia;		/* valor de variabilitat dels oponents [0..9] */
 int retard;		/* valor del retard de moviment, en mil.lisegons */
-
-// (Fase3) Només necessitem guardar el rastre d'un sol oponent (recuperm el funcionament de tron0)
 
 pos **p_opo;			/* vector de taules de posicions dels oponents */
 int *n_opo;            /* vector del numero d'entrades per cada oponent */
@@ -89,7 +69,6 @@ int pos_ini_c;
 // (Fase 5) Variable per guardar la mida actual del trajecte de cada oponent
 int mida_trajecte = 0;
 
-// (Fase 3) A tron3 i oponent3 es necessaria
 /* funcio per esborrar totes les posicions anteriors de l'oponent */
 void esborrar_posicions(pos p_pos[], int n_pos)
 {
@@ -99,7 +78,7 @@ void esborrar_posicions(pos p_pos[], int n_pos)
   {
     win_escricar(p_pos[i].f,p_pos[i].c,' ',NO_INV);	/* esborra una pos. */
     win_retard(6);
-    win_update();  // Actualizar después de cada borrado
+    win_update();  // Actualitzar pantalla
   }
 }
 
@@ -107,7 +86,7 @@ void esborrar_posicions(pos p_pos[], int n_pos)
 
 pthread_t thread_receptor;    // (Fase 5) Thread que fa la funcio *rebre_missatges()
 pthread_t thread_tipus;       // (Fase 5) Thread per determinar el tipus d'oponent
-pthread_t thread_backward;    // (Fase 5) Thread per calcular el moviment
+pthread_t threadEnrere;    // (Fase 5) Thread per calcular el moviment
 
 // (Fase 5) Creem el mutex (semàfor binari) per evitar que dos threads accedeixin a mem compartida
 
@@ -131,53 +110,58 @@ typedef struct {
     int index;              /* index oponent */
 } dadesThreads;
 
-// (Fase 5) Funció (thread) que revisa fins que acabi el joc si hi ha nous missatges i crea els dos nous
+// (Fase 5) Funció (thread) que revisa fins que acabi el joc si hi ha nous missatges i crea els dos nous threads (un un segueix el rastre cap endevant, l'altre cap a enrere)
 void *rebre_missatges(void *arg) {
     dadesColisions col_data;
-    dadesThreads t_data_forward;   // Estructura separada para cada thread
-    dadesThreads t_data_backward;  // Estructura separada para cada thread
-    pthread_t thread_forward;      // Thread separado para cada dirección
-    pthread_t thread_backward;
+    dadesThreads dadesThreadEnrere;     // Estructura pel thread que retrocedeix
+    dadesThreads dadesThreadEndavant;   // Estructura pel thread que avança
+    pthread_t threadEnrere;             // Thread per seguir el rastre cap a enrere ('O')
+    pthread_t threadEndavant;           // Thread per seguir el rastre cap a endevant ('X')
     int index = *((int*)arg);
     
     while (!(*p_fi1) && !(*p_fi2)) {
+        if (*p_fi1 || *p_fi2) {
+            pthread_exit(NULL);  // (Fase 5) Hem de foprçar aquesta condició per a que el thread no sigui infinit
+        }
         if (receiveM(id_missatges, &col_data) > 0) {
+            if (*p_fi1 || *p_fi2) return NULL;  // (Fase 5) Afegim més controls per parar el thread quan el joc acabi (vam tenir problemes amb la finalització del thread)
             if (col_data.oponent == index) {
-                // Configurar datos para el thread forward
-                t_data_forward.filaInicial = col_data.f;
-                t_data_forward.columnaInicial = col_data.c;
-                t_data_forward.index = index;
-                t_data_forward.tipus = 1;
+                // (Fase 5) Afegim dades pel thread que retrocedeix
+                dadesThreadEnrere.filaInicial = col_data.f;
+                dadesThreadEnrere.columnaInicial = col_data.c;
+                dadesThreadEnrere.index = index;
+                dadesThreadEnrere.tipus = 1;
 
-                // Configurar datos para el thread backward
-                t_data_backward.filaInicial = col_data.f;
-                t_data_backward.columnaInicial = col_data.c;
-                t_data_backward.index = index;
-                t_data_backward.tipus = 0;
+                // (Fase 5) Afegim dades pel thread que avança
+                dadesThreadEndavant.filaInicial = col_data.f;
+                dadesThreadEndavant.columnaInicial = col_data.c;
+                dadesThreadEndavant.index = index;
+                dadesThreadEndavant.tipus = 0;
 
-                // Crear los threads con sus propios datos
-                pthread_create(&thread_forward, NULL, modifica_trajecte, &t_data_forward);
-                pthread_create(&thread_backward, NULL, modifica_trajecte, &t_data_backward);
+                // (Fase 5) Creem els threads
+                pthread_create(&threadEndavant, NULL, modifica_trajecte, &dadesThreadEnrere);
+                pthread_create(&threadEnrere, NULL, modifica_trajecte, &dadesThreadEndavant);
                 
-                // Esperar a que ambos terminen
-                pthread_join(thread_forward, NULL);
-                pthread_join(thread_backward, NULL);
+                // (Fase 5) Esperem a que acabin
+                pthread_join(threadEndavant, NULL);
+                pthread_join(threadEnrere, NULL);
             }
         }
     }
     return NULL;
 }
 
-// (Fase 5) Nova funció 
+// (Fase 5) Nova funció pels dos threads que seguirán el rastre (ja sigui endavant o enrere)
 void *modifica_trajecte(void *arg) {
-    dadesThreads *dades = (dadesThreads*)arg;
+    dadesThreads *dades = (dadesThreads*)arg; // Recuperem les dades que es pasen per paràmetre
     int i;
-    int punt_colisio = -1;  // Inicializamos a -1 para detectar si no se encuentra
+    int punt_colisio = -1;  // Variable per buscar el index del vector p_opo on hi ha la col·lisió
 
     // Buscar el punto de colisión
-    pthread_mutex_lock(&mutex_trajecte);
+    pthread_mutex_lock(&mutex_trajecte); // (Fase 5) S'ha de fer un lock per evitar que hi hagin conflictes
     
-    // Solo buscamos hasta mida_trajecte, que es el tamaño real del trayecto
+    // (Fase 5) Busquem entre tots els elements que te el vector p_opo si hi ha la coordenada de col·lisió
+
     for (i = 0; i < mida_trajecte; i++) {
         if (p_opo[0][i].f == dades->filaInicial && 
             p_opo[0][i].c == dades->columnaInicial) {
@@ -186,31 +170,31 @@ void *modifica_trajecte(void *arg) {
         }
     }
 
-    // Si no encontramos el punto de colisión, salimos
+    // (Fase 5) Si no hem trobat la col·lisió alliberem el lock i sortim
     if (punt_colisio == -1) {
         pthread_mutex_unlock(&mutex_trajecte);
         return NULL;
     }
-
+    // (Fase 5) Ara mirem si estem en el thread que avança o en el thread que retrocedeix
     if (dades->tipus == 0) {
-        // Del punto de colisión hacia atrás
+        // (Fase 5) Si estem en el thread que retrocedeix escribim 'O' fins l'inici del rastre
         for (i = punt_colisio; i >= 0; i--) {
             win_escricar(p_opo[0][i].f, p_opo[0][i].c, 'O', INVERS);
             win_retard(10);
             win_update();
         }
-        // Pintar la posición inicial
+        // Pintar la posició inicial
         win_escricar(pos_ini_f, pos_ini_c, 'O', INVERS);
         win_update();
     } else {
-        // Del punto de colisión hacia adelante
-        // Solo hasta mida_trajecte, que es el tamaño real del trayecto
+        // (Fase 5) Si estem en el thread que avança escribim 'X' fins al final del rastre
         for (i = punt_colisio + 1; i < mida_trajecte; i++) {
             win_escricar(p_opo[0][i].f, p_opo[0][i].c, 'X', INVERS);
             win_retard(10);
             win_update();
         }
     }
+    // (Fase 5) Alliberem el lock
     pthread_mutex_unlock(&mutex_trajecte);
     return NULL;
 }
@@ -324,6 +308,7 @@ int main(int n_args, char *ll_args[])
           (*p_vius)--;   /* Decrementem el comptador d'oponents vius */
           if (*p_vius <= 0) {  /* Si no queden oponents vius */
               *p_fi2 = 1;
+              win_update();
           }
 
           fprintf(arxiuSortida, "L'oponent %d (PID: %d) ha xocat. Queden %d oponents vius\n", 
@@ -339,6 +324,9 @@ int main(int n_args, char *ll_args[])
           opo[index].d = vd[rand() % nd];
       }
     }
+    if (*p_fi1 || *p_fi2) {
+        break;  // (Fase 5) Mes controls, potser inncesaris, per controlar la correcta finalització del joc
+    }
     if (!(*p_fi2))
     {
       opo[index].f = opo[index].f + df[opo[index].d];
@@ -346,11 +334,11 @@ int main(int n_args, char *ll_args[])
 
       win_escricar(opo[index].f,opo[index].c,'1'+index,INVERS);
 
-      // (Fase 5) Añadimos la nueva posición al trayecto
+      // (Fase 5) Controlem la nova variable que controla la mida del trajecte
       p_opo[0][mida_trajecte].f = opo[index].f;
       p_opo[0][mida_trajecte].c = opo[index].c;
-      mida_trajecte++;  // Incrementamos después de añadir
-      n_opo[index] = mida_trajecte;  // Mantenemos sincronizado n_opo con mida_trajecte
+      mida_trajecte++;  // Incrementem
+      n_opo[index] = mida_trajecte;
 
       if (arxiuSortida)
         fprintf(arxiuSortida, "L'oponent %d (PID: %d) s'ha mogut a (%d,%d)\n",
@@ -367,17 +355,25 @@ int main(int n_args, char *ll_args[])
     win_retard(ret_aleatori);
   }
 
+  /* Asegurarse de que la pantalla está actualizada antes de salir */
+  win_update();
+
   // (Fase 5) Esperem que acabi la funció de rebre missatges
-  pthread_join(thread_receptor, NULL);
+  if (thread_receptor) {
+      pthread_cancel(thread_receptor);  // (Fase 5) Forçar que no quedi cap thread en execució
+      pthread_join(thread_receptor, NULL);
+  }
 
   /* Liberar recursos */
   free(p_opo[0]);
   free(p_opo);
   free(n_opo);
-  fclose(arxiuSortida);
+  if (arxiuSortida) {
+      fclose(arxiuSortida);
+  }
 
-  // (Fase 5) Destruïm el mutex
+  // (Fase 5) Destruïm el mutex (semàfor binari)
   pthread_mutex_destroy(&mutex_trajecte);
 
-  return 0;
+  exit(0);  // (Fase 5) Forçar sortida
 }
